@@ -1,0 +1,92 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: nvy
+    main: .
+    binary: nvy
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/trevorphillipscoding/nvy/cmd.Version={{.Version}}
+    flags:
+      - -trimpath
+
+archives:
+  - id: nvy
+    format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_
+      {{- if eq .Os "darwin" }}macOS
+      {{- else }}{{ .Os }}{{ end }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - typo
+  groups:
+    - title: "New Features"
+      regexp: "^feat:"
+      order: 0
+    - title: "Bug Fixes"
+      regexp: "^fix:"
+      order: 1
+    - title: "Other Changes"
+      order: 999
+
+release:
+  github:
+    owner: trevorphillipscoding
+    name: nvy
+  draft: false
+  prerelease: auto
+  mode: replace
+  header: |
+    ## Installation
+
+    ### Homebrew (macOS/Linux)
+    ```sh
+    brew install trevorphillipscoding/tap/nvy
+    ```
+
+    ### Manual Install
+    Download the archive for your platform below, extract it, and move `nvy` to a directory in your PATH.
+
+brews:
+  - repository:
+      owner: trevorphillipscoding
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: "https://github.com/trevorphillipscoding/nvy"
+    description: "A minimalist, plugin-driven runtime version manager"
+    license: "MIT"
+    directory: Formula
+    install: |
+      bin.install "nvy"
+    test: |
+      system "#{bin}/nvy", "--version"

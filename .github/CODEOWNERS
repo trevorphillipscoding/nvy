@@ -1,0 +1,9 @@
+# CODEOWNERS file
+# 
+# This file defines who is responsible for code review and approval.
+# When a PR is opened, GitHub will automatically request reviews from the owners.
+#
+# Documentation: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything in the repo
+* @trevorphillipscoding

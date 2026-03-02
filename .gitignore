@@ -1,0 +1,11 @@
+# Build output
+/nvy
+
+# macOS
+.DS_Store
+
+# nvy local version pin files — commit these in your own projects,
+# but the nvy repo itself uses go.mod / toolchain for its own Go version.
+.go-version
+.node-version
+.python-version
