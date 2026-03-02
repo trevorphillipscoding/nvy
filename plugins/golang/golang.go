@@ -4,14 +4,21 @@
 package golang
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"time"
 
+	"github.com/trevorphillipscoding/nvy/internal/version"
 	"github.com/trevorphillipscoding/nvy/plugins"
 )
 
-const (
-	downloadBase = "https://dl.google.com/go"
-)
+const downloadBase = "https://dl.google.com/go"
+
+// releasesAPI is a var so tests can override it with an httptest server.
+var releasesAPI = "https://go.dev/dl/?mode=json"
 
 func init() {
 	plugins.Register(New())
@@ -34,7 +41,13 @@ func (g *goPlugin) Aliases() []string { return []string{"golang"} }
 //	go<version>.<os>-<arch>.tar.gz.sha256  ← single-line hex SHA-256
 //
 // Example: go1.22.1.linux-amd64.tar.gz
-func (g *goPlugin) Resolve(version, goos, goarch string) (*plugins.DownloadSpec, error) {
+//
+// Partial versions (fewer than two dots, no +tag) resolve to the latest
+// matching stable release:
+//
+//	"1"    → latest 1.x.y
+//	"1.26" → latest 1.26.x
+func (g *goPlugin) Resolve(ver, goos, goarch string) (*plugins.DownloadSpec, error) {
 	os, err := normalizeOS(goos)
 	if err != nil {
 		return nil, err
@@ -44,7 +57,20 @@ func (g *goPlugin) Resolve(version, goos, goarch string) (*plugins.DownloadSpec,
 		return nil, err
 	}
 
-	filename := fmt.Sprintf("go%s.%s-%s.tar.gz", version, os, arch)
+	var resolvedVersion string
+	base := strings.SplitN(ver, "+", 2)[0]
+	if strings.Count(base, ".") < 2 {
+		latest, err := findLatestGoVersion(base)
+		if err != nil {
+			return nil, err
+		}
+		resolvedVersion = latest
+		ver = latest
+	} else {
+		ver = version.Normalize(ver)
+	}
+
+	filename := fmt.Sprintf("go%s.%s-%s.tar.gz", ver, os, arch)
 	url := fmt.Sprintf("%s/%s", downloadBase, filename)
 
 	return &plugins.DownloadSpec{
@@ -53,7 +79,45 @@ func (g *goPlugin) Resolve(version, goos, goarch string) (*plugins.DownloadSpec,
 		ChecksumURL:      url + ".sha256",
 		ChecksumFilename: "", // plain mode: response body is the raw hex hash
 		StripComponents:  1,  // archive has a top-level "go/" directory to strip
+		ResolvedVersion:  resolvedVersion,
 	}, nil
+}
+
+// findLatestGoVersion returns the latest stable Go release whose version
+// starts with prefix (e.g. "1" or "1.26"). The go.dev/dl API returns releases
+// newest-first, so the first match is the latest.
+func findLatestGoVersion(prefix string) (string, error) {
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(releasesAPI)
+	if err != nil {
+		return "", fmt.Errorf("go plugin: fetching releases: %w", err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return "", fmt.Errorf("go plugin: reading releases response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("go plugin: releases API returned %s", resp.Status)
+	}
+
+	var releases []struct {
+		Version string `json:"version"`
+		Stable  bool   `json:"stable"`
+	}
+	if err := json.Unmarshal(body, &releases); err != nil {
+		return "", fmt.Errorf("go plugin: parsing releases JSON: %w", err)
+	}
+
+	// Versions in the API are "go1.24.1"; add a dot after prefix to avoid
+	// "go1.2" matching "go1.20.x".
+	wantPrefix := "go" + prefix + "."
+	for _, r := range releases {
+		if r.Stable && strings.HasPrefix(r.Version, wantPrefix) {
+			return strings.TrimPrefix(r.Version, "go"), nil
+		}
+	}
+	return "", fmt.Errorf("go plugin: no stable release found for Go %s.*", prefix)
 }
 
 func normalizeOS(goos string) (string, error) {

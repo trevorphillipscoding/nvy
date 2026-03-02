@@ -31,6 +31,12 @@ type DownloadSpec struct {
 	//   go1.22.1.linux-amd64.tar.gz      → go/bin/go         (strip 1)
 	//   node-v20.11.1-linux-x64.tar.gz   → node-v.../bin/node (strip 1)
 	StripComponents int
+
+	// ResolvedVersion is the canonical version that was resolved from the input.
+	// Plugins set this when the caller passed a partial version (e.g. "3.12") and
+	// the plugin resolved it to a specific release (e.g. "3.12.8").
+	// If empty, install uses version.Normalize(rawInput) for the install directory.
+	ResolvedVersion string
 }
 
 // Plugin is the interface every language runtime installer must satisfy.

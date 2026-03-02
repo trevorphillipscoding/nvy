@@ -33,7 +33,7 @@ Run "nvy global <tool> <version>" afterwards to activate it.`,
 }
 
 func runInstall(_ *cobra.Command, args []string) error {
-	tool, version, err := parseToolVersion(args)
+	tool, rawVer, err := parseToolVersion(args)
 	if err != nil {
 		return err
 	}
@@ -44,17 +44,24 @@ func runInstall(_ *cobra.Command, args []string) error {
 	}
 	tool = p.Name() // normalise alias → canonical name (e.g. "golang" → "go")
 
-	installDir := env.RuntimeDir(tool, version)
-	if _, statErr := os.Stat(installDir); statErr == nil {
-		fmt.Printf("already installed: %s %s\n", tool, version)
-		fmt.Printf("  location: %s\n", installDir)
-		fmt.Printf("  to activate: nvy global %s %s\n", tool, version)
-		return nil
+	spec, err := p.Resolve(rawVer, env.OS(), env.Arch())
+	if err != nil {
+		return fmt.Errorf("resolving %s %s: %w", tool, rawVer, err)
 	}
 
-	spec, err := p.Resolve(version, env.OS(), env.Arch())
-	if err != nil {
-		return fmt.Errorf("resolving %s %s: %w", tool, version, err)
+	// Use the plugin's resolved version if it resolved a partial input (e.g. "3.12" → "3.12.8"),
+	// otherwise fall back to standard normalization (e.g. "1.26" → "1.26.0").
+	resolvedVer := spec.ResolvedVersion
+	if resolvedVer == "" {
+		resolvedVer = version.Normalize(rawVer)
+	}
+
+	installDir := env.RuntimeDir(tool, resolvedVer)
+	if _, statErr := os.Stat(installDir); statErr == nil {
+		fmt.Printf("already installed: %s %s\n", tool, resolvedVer)
+		fmt.Printf("  location: %s\n", installDir)
+		fmt.Printf("  to activate: nvy global %s %s\n", tool, resolvedVer)
+		return nil
 	}
 
 	// Enforce HTTPS — belt-and-suspenders check on top of the fetch package's own check.
@@ -73,7 +80,7 @@ func runInstall(_ *cobra.Command, args []string) error {
 	archivePath := filepath.Join(tmpDir, "archive.tar.gz")
 
 	// ── Step 1: Download ────────────────────────────────────────────────────
-	fmt.Printf("downloading %s %s\n", tool, version)
+	fmt.Printf("downloading %s %s\n", tool, resolvedVer)
 	fmt.Printf("  from %s\n", spec.URL)
 	if err := fetch.Download(spec.URL, archivePath); err != nil {
 		return fmt.Errorf("download failed: %w", err)
@@ -102,8 +109,8 @@ func runInstall(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("install failed: %w", err)
 	}
 
-	fmt.Printf("installed %s %s\n", tool, version)
-	fmt.Printf("  run: nvy global %s %s\n", tool, version)
+	fmt.Printf("installed %s %s\n", tool, resolvedVer)
+	fmt.Printf("  run: nvy global %s %s\n", tool, resolvedVer)
 	return nil
 }
 
@@ -154,14 +161,21 @@ func parseHashFile(data []byte, filename string) (string, error) {
 //
 //	["go", "1.22.1"]     — two separate arguments
 //	["go@1.22.1"]        — single argument with @ separator
+//
+// The version is returned trimmed of whitespace and trailing dots
+// (e.g. "1.26." → "1.26"). Each plugin normalizes or resolves
+// versions in its own Resolve() implementation.
 func parseToolVersion(args []string) (tool, ver string, err error) {
+	clean := func(v string) string {
+		return strings.TrimRight(strings.TrimSpace(v), ".")
+	}
 	if len(args) == 2 {
-		return strings.TrimSpace(args[0]), version.Normalize(strings.TrimSpace(args[1])), nil
+		return strings.TrimSpace(args[0]), clean(args[1]), nil
 	}
 	// Single arg must use the tool@version form.
 	parts := strings.SplitN(args[0], "@", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return "", "", fmt.Errorf("specify a version: nvy install <tool> <version>  or  nvy install <tool>@<version>")
 	}
-	return strings.TrimSpace(parts[0]), version.Normalize(strings.TrimSpace(parts[1])), nil
+	return strings.TrimSpace(parts[0]), clean(parts[1]), nil
 }

@@ -172,6 +172,19 @@ func TestPythonPlugin_UnsupportedPlatform(t *testing.T) {
 	}
 }
 
+func TestPythonPlugin_ExplicitTagNoResolvedVersion(t *testing.T) {
+	p := python.New()
+	// When a full version+tag is provided, ResolvedVersion should be empty
+	// (no resolution was needed; the install dir uses the input version as-is).
+	spec, err := p.Resolve("3.12.5+20240814", "linux", "amd64")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if spec.ResolvedVersion != "" {
+		t.Errorf("ResolvedVersion should be empty for explicit version+tag, got %q", spec.ResolvedVersion)
+	}
+}
+
 func TestRegistry_AliasResolution(t *testing.T) {
 	cases := []struct {
 		alias    string
@@ -199,5 +212,71 @@ func TestRegistry_UnknownTool(t *testing.T) {
 	_, err := plugins.Get("ruby")
 	if err == nil {
 		t.Error("expected error for unknown tool, got nil")
+	}
+}
+
+func TestRegistry_All(t *testing.T) {
+	all := plugins.All()
+	if len(all) == 0 {
+		t.Fatal("All() returned empty slice")
+	}
+	// Must be sorted by canonical name.
+	for i := 1; i < len(all); i++ {
+		if all[i].Name() < all[i-1].Name() {
+			t.Errorf("All() not sorted: %q before %q", all[i-1].Name(), all[i].Name())
+		}
+	}
+	// Must include the three built-in plugins.
+	names := make(map[string]bool, len(all))
+	for _, p := range all {
+		names[p.Name()] = true
+	}
+	for _, want := range []string{"go", "node", "python"} {
+		if !names[want] {
+			t.Errorf("All() missing plugin %q", want)
+		}
+	}
+}
+
+func TestGoPlugin_UnsupportedArch(t *testing.T) {
+	p := golang.New()
+	_, err := p.Resolve("1.22.1", "linux", "mips")
+	if err == nil {
+		t.Error("expected error for unsupported arch, got nil")
+	}
+}
+
+func TestNodePlugin_Darwin(t *testing.T) {
+	p := node.New()
+	spec, err := p.Resolve("20.11.1", "darwin", "arm64")
+	if err != nil {
+		t.Fatalf("Resolve darwin/arm64: %v", err)
+	}
+	if !strings.Contains(spec.URL, "darwin") {
+		t.Errorf("URL should contain darwin, got %q", spec.URL)
+	}
+}
+
+func TestNodePlugin_UnsupportedPlatform(t *testing.T) {
+	p := node.New()
+	_, err := p.Resolve("20.11.1", "windows", "amd64")
+	if err == nil {
+		t.Error("expected error for unsupported platform, got nil")
+	}
+}
+
+func TestNodePlugin_UnsupportedArch(t *testing.T) {
+	p := node.New()
+	_, err := p.Resolve("20.11.1", "linux", "mips")
+	if err == nil {
+		t.Error("expected error for unsupported arch, got nil")
+	}
+}
+
+func TestPythonPlugin_ParseVersionError(t *testing.T) {
+	p := python.New()
+	_, err := p.Resolve("", "linux", "amd64")
+	if err == nil {
+		t.Error("expected error for empty version, got nil")
 	}
 }
