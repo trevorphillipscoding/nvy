@@ -11,6 +11,7 @@ import (
 	"github.com/trevorphillipscoding/nvy/internal/archive"
 	"github.com/trevorphillipscoding/nvy/internal/env"
 	"github.com/trevorphillipscoding/nvy/internal/fetch"
+	"github.com/trevorphillipscoding/nvy/internal/version"
 	"github.com/trevorphillipscoding/nvy/plugins"
 )
 
@@ -153,14 +154,14 @@ func parseHashFile(data []byte, filename string) (string, error) {
 //
 //	["go", "1.22.1"]     — two separate arguments
 //	["go@1.22.1"]        — single argument with @ separator
-func parseToolVersion(args []string) (tool, version string, err error) {
+func parseToolVersion(args []string) (tool, ver string, err error) {
 	if len(args) == 2 {
-		return strings.TrimSpace(args[0]), strings.TrimSpace(args[1]), nil
+		return strings.TrimSpace(args[0]), version.Normalize(strings.TrimSpace(args[1])), nil
 	}
 	// Single arg must use the tool@version form.
 	parts := strings.SplitN(args[0], "@", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return "", "", fmt.Errorf("specify a version: nvy install <tool> <version>  or  nvy install <tool>@<version>")
 	}
-	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), nil
+	return strings.TrimSpace(parts[0]), version.Normalize(strings.TrimSpace(parts[1])), nil
 }

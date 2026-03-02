@@ -26,6 +26,7 @@ import (
 
 	"github.com/trevorphillipscoding/nvy/internal/env"
 	"github.com/trevorphillipscoding/nvy/internal/state"
+	"github.com/trevorphillipscoding/nvy/internal/version"
 )
 
 // Run resolves the active version for binary's owning tool, then replaces the
@@ -72,13 +73,13 @@ func ResolveVersion(tool string) (string, error) {
 	// 1. Local version file (.<tool>-version), walking up from cwd.
 	if cwd, err := os.Getwd(); err == nil {
 		if v := findLocalVersion(tool, cwd); v != "" {
-			return v, nil
+			return version.Normalize(v), nil
 		}
 	}
 
 	// 2. Global version.
 	if v, ok := state.GetGlobal(tool); ok {
-		return v, nil
+		return version.Normalize(v), nil
 	}
 
 	return "", fmt.Errorf(
