@@ -144,8 +144,8 @@ func TestRegisterAndLookupShims(t *testing.T) {
 func TestUnregisterShims(t *testing.T) {
 	t.Setenv("NVY_DIR", t.TempDir())
 
-	RegisterShims("go", []string{"go", "gofmt"})     //nolint:errcheck
-	RegisterShims("node", []string{"node", "npm"})   //nolint:errcheck
+	RegisterShims("go", []string{"go", "gofmt"})   //nolint:errcheck
+	RegisterShims("node", []string{"node", "npm"}) //nolint:errcheck
 
 	removed, err := UnregisterShims("go")
 	if err != nil {
