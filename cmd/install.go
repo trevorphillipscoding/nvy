@@ -87,7 +87,7 @@ func runInstall(_ *cobra.Command, args []string) error {
 	}
 
 	// ── Step 2: Verify checksum ─────────────────────────────────────────────
-	sha256, err := resolveChecksum(spec)
+	sha256, err := fetch.ResolveChecksum(spec.SHA256, spec.ChecksumURL, spec.ChecksumFilename)
 	if err != nil {
 		return fmt.Errorf("fetching checksum: %w", err)
 	}
@@ -112,70 +112,4 @@ func runInstall(_ *cobra.Command, args []string) error {
 	fmt.Printf("installed %s %s\n", tool, resolvedVer)
 	fmt.Printf("  run: nvy global %s %s\n", tool, resolvedVer)
 	return nil
-}
-
-// resolveChecksum fetches or returns the expected SHA-256 hex string for a download.
-//
-// Resolution priority:
-//  1. spec.SHA256 — pre-known hash (fastest, no network call)
-//  2. spec.ChecksumURL — fetch hash from remote; if ChecksumFilename is set,
-//     parse as a SHASUMS256-style file; otherwise treat the body as a raw hex hash.
-func resolveChecksum(spec *plugins.DownloadSpec) (string, error) {
-	if spec.SHA256 != "" {
-		return spec.SHA256, nil
-	}
-	if spec.ChecksumURL == "" {
-		return "", fmt.Errorf("plugin provided neither SHA256 nor ChecksumURL")
-	}
-	data, err := fetch.FetchBytes(spec.ChecksumURL)
-	if err != nil {
-		return "", fmt.Errorf("fetching checksum from %s: %w", spec.ChecksumURL, err)
-	}
-	if spec.ChecksumFilename != "" {
-		return parseHashFile(data, spec.ChecksumFilename)
-	}
-	// Plain format: the entire response body is the hex SHA-256.
-	return strings.TrimSpace(string(data)), nil
-}
-
-// parseHashFile parses a SHASUMS256-style file and returns the hash for filename.
-//
-// Format (each line):
-//
-//	<hex-sha256>  <filename>
-func parseHashFile(data []byte, filename string) (string, error) {
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) >= 2 && fields[1] == filename {
-			return fields[0], nil
-		}
-	}
-	return "", fmt.Errorf("no checksum found for %q in checksum file", filename)
-}
-
-// parseToolVersion accepts either:
-//
-//	["go", "1.22.1"]     — two separate arguments
-//	["go@1.22.1"]        — single argument with @ separator
-//
-// The version is returned trimmed of whitespace and trailing dots
-// (e.g. "1.26." → "1.26"). Each plugin normalizes or resolves
-// versions in its own Resolve() implementation.
-func parseToolVersion(args []string) (tool, ver string, err error) {
-	clean := func(v string) string {
-		return strings.TrimRight(strings.TrimSpace(v), ".")
-	}
-	if len(args) == 2 {
-		return strings.TrimSpace(args[0]), clean(args[1]), nil
-	}
-	// Single arg must use the tool@version form.
-	parts := strings.SplitN(args[0], "@", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("specify a version: nvy install <tool> <version>  or  nvy install <tool>@<version>")
-	}
-	return strings.TrimSpace(parts[0]), clean(parts[1]), nil
 }
