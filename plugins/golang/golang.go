@@ -18,7 +18,8 @@ import (
 const downloadBase = "https://dl.google.com/go"
 
 // releasesAPI is a var so tests can override it with an httptest server.
-var releasesAPI = "https://go.dev/dl/?mode=json"
+// include=all returns every stable release, not just the two most-recent minor branches.
+var releasesAPI = "https://go.dev/dl/?mode=json&include=all"
 
 func init() {
 	plugins.Register(New())
@@ -33,7 +34,7 @@ func (g *goPlugin) Name() string { return "go" }
 
 func (g *goPlugin) Aliases() []string { return []string{"golang"} }
 
-// AvailableVersions returns stable Go versions as exact semantic versions.
+// AvailableVersions returns all stable Go versions (including archived releases) as exact semantic versions.
 func (g *goPlugin) AvailableVersions(_, _ string) ([]string, error) {
 	return fetchStableGoVersions()
 }
