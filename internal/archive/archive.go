@@ -31,13 +31,13 @@ func ExtractTarGz(src, dest string, stripComponents int) error {
 	if err != nil {
 		return fmt.Errorf("opening archive: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	gz, err := gzip.NewReader(f)
 	if err != nil {
 		return fmt.Errorf("reading gzip stream: %w", err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 
 	tr := tar.NewReader(gz)
 
@@ -138,7 +138,7 @@ func extractFile(r io.Reader, dest string, mode os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	limited := &io.LimitedReader{R: r, N: maxFileSize + 1}
 	if _, err := io.Copy(f, limited); err != nil {

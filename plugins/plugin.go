@@ -31,12 +31,6 @@ type DownloadSpec struct {
 	//   go1.22.1.linux-amd64.tar.gz      → go/bin/go         (strip 1)
 	//   node-v20.11.1-linux-x64.tar.gz   → node-v.../bin/node (strip 1)
 	StripComponents int
-
-	// ResolvedVersion is the canonical version that was resolved from the input.
-	// Plugins set this when the caller passed a partial version (e.g. "3.12") and
-	// the plugin resolved it to a specific release (e.g. "3.12.8").
-	// If empty, install uses version.Normalize(rawInput) for the install directory.
-	ResolvedVersion string
 }
 
 // Plugin is the interface every language runtime installer must satisfy.
@@ -49,8 +43,15 @@ type Plugin interface {
 	// Aliases are case-sensitive and must not conflict with other plugin names.
 	Aliases() []string
 
-	// Resolve returns a DownloadSpec for the given version on the given platform.
+	// AvailableVersions returns all available exact versions (major.minor.patch)
+	// for this runtime on the given platform.
+	//
+	// Version interpretation (exact vs partial, latest matching version, sorting)
+	// is handled centrally by internal/semver. Plugins only provide candidates.
+	AvailableVersions(goos, goarch string) ([]string, error)
+
+	// Resolve returns a DownloadSpec for the given full version on the given platform.
+	// version is always a complete version string (e.g. "22.13.1", not "22").
 	// goos/goarch mirror runtime.GOOS / runtime.GOARCH values ("linux"/"darwin", "amd64"/"arm64").
-	// Resolve should return a descriptive error for unsupported platforms or malformed versions.
 	Resolve(version, goos, goarch string) (*DownloadSpec, error)
 }

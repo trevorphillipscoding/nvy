@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/trevorphillipscoding/nvy/internal/semver"
 )
 
 func TestNormalizeOS(t *testing.T) {
@@ -66,7 +68,7 @@ func TestNormalizeArch(t *testing.T) {
 	}
 }
 
-func TestFindLatestNodeVersion(t *testing.T) {
+func TestFetchNodeVersions(t *testing.T) {
 	releases := []struct {
 		Version string `json:"version"`
 	}{
@@ -77,8 +79,8 @@ func TestFindLatestNodeVersion(t *testing.T) {
 	}
 	body, _ := json.Marshal(releases)
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write(body)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(body)
 	}))
 	defer srv.Close()
 
@@ -86,35 +88,22 @@ func TestFindLatestNodeVersion(t *testing.T) {
 	releasesAPI = srv.URL
 	defer func() { releasesAPI = orig }()
 
-	cases := []struct {
-		prefix  string
-		want    string
-		wantErr bool
-	}{
-		{"22", "22.13.1", false},
-		{"20", "20.18.2", false},
-		{"18", "", true},
+	versions, err := fetchNodeVersions()
+	if err != nil {
+		t.Fatalf("fetchNodeVersions: %v", err)
 	}
-	for _, c := range cases {
-		got, err := findLatestNodeVersion(c.prefix)
-		if c.wantErr {
-			if err == nil {
-				t.Errorf("findLatestNodeVersion(%q): expected error, got %q", c.prefix, got)
-			}
-			continue
-		}
-		if err != nil {
-			t.Errorf("findLatestNodeVersion(%q): unexpected error: %v", c.prefix, err)
-			continue
-		}
-		if got != c.want {
-			t.Errorf("findLatestNodeVersion(%q) = %q; want %q", c.prefix, got, c.want)
-		}
+
+	resolved, err := semver.Resolve("22", versions)
+	if err != nil {
+		t.Fatalf("Resolve 22: %v", err)
+	}
+	if resolved != "22.13.1" {
+		t.Errorf("Resolve(22) = %q; want 22.13.1", resolved)
 	}
 }
 
-func TestFindLatestNodeVersion_ServerError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func TestFetchNodeVersions_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
@@ -123,15 +112,15 @@ func TestFindLatestNodeVersion_ServerError(t *testing.T) {
 	releasesAPI = srv.URL
 	defer func() { releasesAPI = orig }()
 
-	_, err := findLatestNodeVersion("22")
+	_, err := fetchNodeVersions()
 	if err == nil {
 		t.Error("expected error for server 500, got nil")
 	}
 }
 
-func TestFindLatestNodeVersion_BadJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("not json"))
+func TestFetchNodeVersions_BadJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("not json"))
 	}))
 	defer srv.Close()
 
@@ -139,13 +128,13 @@ func TestFindLatestNodeVersion_BadJSON(t *testing.T) {
 	releasesAPI = srv.URL
 	defer func() { releasesAPI = orig }()
 
-	_, err := findLatestNodeVersion("22")
+	_, err := fetchNodeVersions()
 	if err == nil {
 		t.Error("expected error for bad JSON, got nil")
 	}
 }
 
-func TestResolve_PartialVersion(t *testing.T) {
+func TestAvailableVersions(t *testing.T) {
 	releases := []struct {
 		Version string `json:"version"`
 	}{
@@ -153,8 +142,8 @@ func TestResolve_PartialVersion(t *testing.T) {
 	}
 	body, _ := json.Marshal(releases)
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write(body)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(body)
 	}))
 	defer srv.Close()
 
@@ -163,15 +152,27 @@ func TestResolve_PartialVersion(t *testing.T) {
 	defer func() { releasesAPI = orig }()
 
 	p := New()
-	spec, err := p.Resolve("22", "linux", "amd64")
+	versions, err := p.AvailableVersions("linux", "amd64")
 	if err != nil {
-		t.Fatalf("Resolve partial version: %v", err)
+		t.Fatalf("AvailableVersions: %v", err)
 	}
-	if spec.ResolvedVersion != "22.13.1" {
-		t.Errorf("ResolvedVersion = %q; want 22.13.1", spec.ResolvedVersion)
+	ver, err := semver.Resolve("22", versions)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if ver != "22.13.1" {
+		t.Errorf("resolved version = %q; want 22.13.1", ver)
+	}
+}
+
+func TestResolve_FullVersion(t *testing.T) {
+	p := New()
+	spec, err := p.Resolve("22.13.1", "linux", "amd64")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
 	}
 	if !strings.Contains(spec.URL, "22.13.1") {
-		t.Errorf("URL should contain resolved version, got %q", spec.URL)
+		t.Errorf("URL should contain version, got %q", spec.URL)
 	}
 }
 

@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -43,9 +44,14 @@ func runGlobal(_ *cobra.Command, args []string) error {
 	}
 	tool = p.Name() // normalise alias
 
-	runtimeBinDir := env.RuntimeBinDir(tool, version)
+	ver, err := resolveInstalledVersion(tool, version)
+	if err != nil {
+		return fmt.Errorf("resolving installed version for %s %s: %w", tool, version, err)
+	}
+
+	runtimeBinDir := env.RuntimeBinDir(tool, ver)
 	if _, statErr := os.Stat(runtimeBinDir); statErr != nil {
-		return fmt.Errorf("%s %s is not installed — run: nvy install %s %s", tool, version, tool, version)
+		return fmt.Errorf("%s %s is not installed — run: nvy install %s %s", tool, ver, tool, ver)
 	}
 
 	// The nvy binary itself acts as the shim. When invoked as "go" or "npm",
@@ -65,11 +71,11 @@ func runGlobal(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("creating shims: %w", err)
 	}
 
-	if err := state.SetGlobal(tool, version); err != nil {
+	if err := state.SetGlobal(tool, ver); err != nil {
 		return fmt.Errorf("saving state: %w", err)
 	}
 
-	fmt.Printf("now using %s %s\n", tool, version)
+	fmt.Printf("now using %s %s\n", tool, ver)
 	if len(created) > 0 {
 		fmt.Printf("  binaries: %s\n", strings.Join(created, ", "))
 	}
@@ -107,7 +113,7 @@ func createShims(runtimeBinDir, nvyBinDir, nvyExe, tool string) ([]string, error
 			continue
 		}
 
-		dst := nvyBinDir + "/" + e.Name()
+		dst := filepath.Join(nvyBinDir, e.Name())
 		_ = os.Remove(dst) // replace any existing symlink or file
 		if err := os.Symlink(nvyExe, dst); err != nil {
 			return nil, fmt.Errorf("creating shim for %s: %w", e.Name(), err)

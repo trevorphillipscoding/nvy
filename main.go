@@ -1,3 +1,5 @@
+// nvy is a universal runtime version manager that replaces pyenv, goenv,
+// nvm, and similar tools with a single, fast binary.
 package main
 
 import (

@@ -40,6 +40,11 @@ func runUninstall(_ *cobra.Command, args []string) error {
 	}
 	tool = p.Name() // normalise alias
 
+	ver, err = resolveInstalledVersion(tool, ver)
+	if err != nil {
+		return fmt.Errorf("resolving installed version for %s %s: %w", tool, ver, err)
+	}
+
 	installDir := env.RuntimeDir(tool, ver)
 	if _, err := os.Stat(installDir); err != nil {
 		return fmt.Errorf("%s %s is not installed", tool, ver)

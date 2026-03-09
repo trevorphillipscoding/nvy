@@ -66,7 +66,7 @@ func TestMkTempDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MkTempDir: %v", err)
 	}
-	defer os.RemoveAll(d1)
+	defer func() { _ = os.RemoveAll(d1) }()
 
 	if _, err := os.Stat(d1); err != nil {
 		t.Errorf("temp dir not created: %v", err)
@@ -76,7 +76,7 @@ func TestMkTempDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MkTempDir second call: %v", err)
 	}
-	defer os.RemoveAll(d2)
+	defer func() { _ = os.RemoveAll(d2) }()
 
 	if d1 == d2 {
 		t.Error("MkTempDir returned same directory twice")
@@ -117,13 +117,17 @@ func TestAtomicInstall_Replace(t *testing.T) {
 	if err := os.MkdirAll(dst, 0755); err != nil {
 		t.Fatal(err)
 	}
-	os.WriteFile(filepath.Join(dst, "old"), []byte("old"), 0644) //nolint:errcheck
+	if err := os.WriteFile(filepath.Join(dst, "old"), []byte("old"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	src := filepath.Join(base, "src")
 	if err := os.MkdirAll(src, 0755); err != nil {
 		t.Fatal(err)
 	}
-	os.WriteFile(filepath.Join(src, "new"), []byte("new"), 0644) //nolint:errcheck
+	if err := os.WriteFile(filepath.Join(src, "new"), []byte("new"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := env.AtomicInstall(src, dst); err != nil {
 		t.Fatalf("AtomicInstall replace: %v", err)

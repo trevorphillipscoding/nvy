@@ -49,11 +49,11 @@ func Download(url, destPath string) error {
 		return fmt.Errorf("refusing to download from non-HTTPS URL: %s", url)
 	}
 
-	resp, err := httpClient.Get(url) //nolint:noctx
+	resp, err := httpClient.Get(url)
 	if err != nil {
 		return fmt.Errorf("GET %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("GET %s: unexpected status %s", url, resp.Status)
@@ -63,7 +63,7 @@ func Download(url, destPath string) error {
 	if err != nil {
 		return fmt.Errorf("creating %s: %w", destPath, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	pw := &progressWriter{total: resp.ContentLength}
 	if _, err := io.Copy(f, io.TeeReader(resp.Body, pw)); err != nil {
@@ -73,18 +73,18 @@ func Download(url, destPath string) error {
 	return nil
 }
 
-// FetchBytes performs a GET request and returns the response body as bytes.
+// Bytes performs a GET request and returns the response body as bytes.
 // Only HTTPS URLs are accepted.
-func FetchBytes(url string) ([]byte, error) {
+func Bytes(url string) ([]byte, error) {
 	if !strings.HasPrefix(url, "https://") {
 		return nil, fmt.Errorf("refusing non-HTTPS URL: %s", url)
 	}
 
-	resp, err := httpClient.Get(url) //nolint:noctx
+	resp, err := httpClient.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("GET %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GET %s: unexpected status %s", url, resp.Status)
@@ -106,7 +106,7 @@ func VerifySHA256(path, expected string) error {
 	if err != nil {
 		return fmt.Errorf("opening %s for verification: %w", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
@@ -115,7 +115,7 @@ func VerifySHA256(path, expected string) error {
 
 	got := hex.EncodeToString(h.Sum(nil))
 	if got != expected {
-		return fmt.Errorf("SHA-256 mismatch:\n  expected: %s\n  got:      %s\n\nThe downloaded file may be corrupt or tampered with. Aborting.", expected, got)
+		return fmt.Errorf("SHA-256 mismatch:\n  expected: %s\n  got:      %s\n\nthe downloaded file may be corrupt or tampered with", expected, got)
 	}
 	return nil
 }

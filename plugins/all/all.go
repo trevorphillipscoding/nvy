@@ -8,7 +8,7 @@
 package all
 
 import (
-	_ "github.com/trevorphillipscoding/nvy/plugins/golang"
-	_ "github.com/trevorphillipscoding/nvy/plugins/node"
-	_ "github.com/trevorphillipscoding/nvy/plugins/python"
+	_ "github.com/trevorphillipscoding/nvy/plugins/golang" // register Go plugin
+	_ "github.com/trevorphillipscoding/nvy/plugins/node"   // register Node.js plugin
+	_ "github.com/trevorphillipscoding/nvy/plugins/python" // register Python plugin
 )

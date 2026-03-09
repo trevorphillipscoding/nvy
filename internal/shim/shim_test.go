@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/trevorphillipscoding/nvy/internal/env"
 	"github.com/trevorphillipscoding/nvy/internal/shim"
 	"github.com/trevorphillipscoding/nvy/internal/state"
 )
@@ -61,6 +62,9 @@ func TestResolveVersion_GlobalVersion(t *testing.T) {
 	t.Setenv("NVY_DIR", t.TempDir())
 	// Chdir to an isolated temp dir so local version file doesn't interfere.
 	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(env.RuntimeDir("go", "1.22.1"), 0755); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := state.SetGlobal("go", "1.22.1"); err != nil {
 		t.Fatal(err)
@@ -78,6 +82,9 @@ func TestResolveVersion_GlobalVersion(t *testing.T) {
 func TestResolveVersion_LocalFile(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("NVY_DIR", tmp)
+	if err := os.MkdirAll(env.RuntimeDir("go", "1.21.0"), 0755); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := os.WriteFile(filepath.Join(tmp, ".go-version"), []byte("1.21.0"), 0644); err != nil {
 		t.Fatal(err)
@@ -97,6 +104,12 @@ func TestResolveVersion_LocalFile(t *testing.T) {
 func TestResolveVersion_LocalOverridesGlobal(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("NVY_DIR", tmp)
+	if err := os.MkdirAll(env.RuntimeDir("go", "1.22.1"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(env.RuntimeDir("go", "1.21.0"), 0755); err != nil {
+		t.Fatal(err)
+	}
 
 	// Set global to a different version.
 	if err := state.SetGlobal("go", "1.22.1"); err != nil {
@@ -117,5 +130,29 @@ func TestResolveVersion_LocalOverridesGlobal(t *testing.T) {
 	// Local version should take precedence.
 	if got != "1.21.0" {
 		t.Errorf("ResolveVersion = %q; want 1.21.0 (local should override global)", got)
+	}
+}
+
+func TestResolveVersion_PartialUsesSameResolver(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("NVY_DIR", tmp)
+	t.Chdir(tmp)
+
+	for _, v := range []string{"1.25.1", "1.25.3", "1.24.9"} {
+		if err := os.MkdirAll(env.RuntimeDir("go", v), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := state.SetGlobal("go", "1.25"); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := shim.ResolveVersion("go")
+	if err != nil {
+		t.Fatalf("ResolveVersion: %v", err)
+	}
+	if got != "1.25.3" {
+		t.Fatalf("ResolveVersion = %q; want 1.25.3", got)
 	}
 }

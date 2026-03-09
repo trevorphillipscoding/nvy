@@ -119,9 +119,29 @@ func AtomicInstall(src, dst string) error {
 
 	// Clean up the old backup asynchronously — not critical.
 	if oldBackup != "" {
-		go os.RemoveAll(oldBackup) //nolint:errcheck
+		go func() { _ = os.RemoveAll(oldBackup) }()
 	}
 	return nil
+}
+
+// InstalledVersions returns installed runtime directory names for a tool.
+// These are expected to be exact semantic versions (major.minor.patch).
+func InstalledVersions(tool string) ([]string, error) {
+	dir := filepath.Join(RuntimesDir(), tool)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	versions := make([]string, 0, len(entries))
+
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		versions = append(versions, e.Name())
+	}
+	return versions, nil
 }
 
 func randomHex(n int) (string, error) {

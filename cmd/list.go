@@ -3,12 +3,14 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/trevorphillipscoding/nvy/internal/env"
+	"github.com/trevorphillipscoding/nvy/internal/semver"
 	"github.com/trevorphillipscoding/nvy/internal/shim"
 	"github.com/trevorphillipscoding/nvy/internal/state"
 	"github.com/trevorphillipscoding/nvy/plugins"
@@ -85,7 +87,7 @@ func runList(_ *cobra.Command, args []string) error {
 // *  = active global
 // »  = local pin for the current directory (from .<tool>-version)
 func printTool(tool string, globals map[string]string, cwd string) error {
-	toolDir := env.RuntimesDir() + "/" + tool
+	toolDir := filepath.Join(env.RuntimesDir(), tool)
 	versions, err := listVersions(toolDir)
 	if err != nil {
 		fmt.Printf("%s  (none installed)\n", tool)
@@ -138,7 +140,7 @@ func listVersions(toolDir string) ([]string, error) {
 			versions = append(versions, e.Name())
 		}
 	}
-	sort.Sort(sort.Reverse(sort.StringSlice(versions)))
+	semver.SortStringsDesc(versions)
 	return versions, nil
 }
 

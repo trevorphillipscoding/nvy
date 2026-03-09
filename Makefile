@@ -4,6 +4,8 @@
 #   make          — build the binary
 #   make install  — install to /usr/local/bin (or GOBIN)
 #   make test     — run tests
+#   make lint     — run golangci-lint
+#   make cover    — run tests and show coverage report
 #   make clean    — remove build artefacts
 
 BINARY             := nvy
@@ -13,7 +15,7 @@ LDFLAGS            := -s -w -X github.com/trevorphillipscoding/nvy/cmd.Version=$
 COVERAGE_THRESHOLD := 65
 COVER_PKGS         := ./internal/...,./plugins/...
 
-.PHONY: all build install test clean deps cover cover-check
+.PHONY: all build install test lint cover cover-check tidy clean deps help
 
 all: build
 
@@ -28,6 +30,10 @@ install:
 ## test: run all tests
 test:
 	go test ./...
+
+## lint: run golangci-lint (install: https://github.com/golangci/golangci-lint)
+lint:
+	golangci-lint run ./...
 
 ## cover: run tests and show coverage report
 cover:
