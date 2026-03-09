@@ -1,9 +1,9 @@
-package version_test
+package verutil_test
 
 import (
 	"testing"
 
-	"github.com/trevorphillipscoding/nvy/internal/version"
+	"github.com/trevorphillipscoding/nvy/internal/verutil"
 )
 
 func TestNormalize(t *testing.T) {
@@ -21,7 +21,7 @@ func TestNormalize(t *testing.T) {
 		{"1.0+tag", "1.0.0+tag"},
 	}
 	for _, c := range cases {
-		got := version.Normalize(c.input)
+		got := verutil.Normalize(c.input)
 		if got != c.want {
 			t.Errorf("Normalize(%q) = %q; want %q", c.input, got, c.want)
 		}

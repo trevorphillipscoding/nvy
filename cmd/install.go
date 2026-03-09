@@ -11,7 +11,7 @@ import (
 	"github.com/trevorphillipscoding/nvy/internal/archive"
 	"github.com/trevorphillipscoding/nvy/internal/env"
 	"github.com/trevorphillipscoding/nvy/internal/fetch"
-	"github.com/trevorphillipscoding/nvy/internal/version"
+	"github.com/trevorphillipscoding/nvy/internal/verutil"
 	"github.com/trevorphillipscoding/nvy/plugins"
 )
 
@@ -44,23 +44,27 @@ func runInstall(_ *cobra.Command, args []string) error {
 	}
 	tool = p.Name() // normalise alias → canonical name (e.g. "golang" → "go")
 
-	spec, err := p.Resolve(rawVer, env.OS(), env.Arch())
+	// Resolve partial versions (e.g. "22" → "22.13.1", "3.13" → "3.13.2") via
+	// the plugin's LatestVersion before calling Resolve with the full version.
+	ver := rawVer
+	if verutil.IsPartial(rawVer) {
+		ver, err = p.LatestVersion(rawVer, env.OS(), env.Arch())
+		if err != nil {
+			return fmt.Errorf("resolving latest %s %s: %w", tool, rawVer, err)
+		}
+	}
+	ver = verutil.Normalize(ver)
+
+	spec, err := p.Resolve(ver, env.OS(), env.Arch())
 	if err != nil {
-		return fmt.Errorf("resolving %s %s: %w", tool, rawVer, err)
+		return fmt.Errorf("resolving %s %s: %w", tool, ver, err)
 	}
 
-	// Use the plugin's resolved version if it resolved a partial input (e.g. "3.12" → "3.12.8"),
-	// otherwise fall back to standard normalization (e.g. "1.26" → "1.26.0").
-	resolvedVer := spec.ResolvedVersion
-	if resolvedVer == "" {
-		resolvedVer = version.Normalize(rawVer)
-	}
-
-	installDir := env.RuntimeDir(tool, resolvedVer)
+	installDir := env.RuntimeDir(tool, ver)
 	if _, statErr := os.Stat(installDir); statErr == nil {
-		fmt.Printf("already installed: %s %s\n", tool, resolvedVer)
+		fmt.Printf("already installed: %s %s\n", tool, ver)
 		fmt.Printf("  location: %s\n", installDir)
-		fmt.Printf("  to activate: nvy global %s %s\n", tool, resolvedVer)
+		fmt.Printf("  to activate: nvy global %s %s\n", tool, ver)
 		return nil
 	}
 
@@ -75,12 +79,12 @@ func runInstall(_ *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(tmpDir) // clean up on any exit path
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	archivePath := filepath.Join(tmpDir, "archive.tar.gz")
 
 	// ── Step 1: Download ────────────────────────────────────────────────────
-	fmt.Printf("downloading %s %s\n", tool, resolvedVer)
+	fmt.Printf("downloading %s %s\n", tool, ver)
 	fmt.Printf("  from %s\n", spec.URL)
 	if err := fetch.Download(spec.URL, archivePath); err != nil {
 		return fmt.Errorf("download failed: %w", err)
@@ -109,7 +113,7 @@ func runInstall(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("install failed: %w", err)
 	}
 
-	fmt.Printf("installed %s %s\n", tool, resolvedVer)
-	fmt.Printf("  run: nvy global %s %s\n", tool, resolvedVer)
+	fmt.Printf("installed %s %s\n", tool, ver)
+	fmt.Printf("  run: nvy global %s %s\n", tool, ver)
 	return nil
 }

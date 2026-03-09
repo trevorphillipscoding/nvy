@@ -44,7 +44,23 @@ func Get(name string) (Plugin, error) {
 func All() []Plugin {
 	mu.RLock()
 	defer mu.RUnlock()
+	return uniqueSorted()
+}
 
+// availableNames returns a sorted, comma-separated list of canonical plugin names.
+// Must be called with mu held (e.g. from Get).
+func availableNames() string {
+	all := uniqueSorted()
+	names := make([]string, len(all))
+	for i, p := range all {
+		names[i] = p.Name()
+	}
+	return strings.Join(names, ", ")
+}
+
+// uniqueSorted returns one entry per unique plugin sorted by canonical name.
+// Caller must hold mu (read or write).
+func uniqueSorted() []Plugin {
 	seen := map[string]bool{}
 	var out []Plugin
 	for _, p := range registry {
@@ -55,18 +71,4 @@ func All() []Plugin {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name() < out[j].Name() })
 	return out
-}
-
-// availableNames returns a sorted, comma-separated list of canonical plugin names.
-func availableNames() string {
-	seen := map[string]bool{}
-	var names []string
-	for _, p := range registry {
-		if !seen[p.Name()] {
-			seen[p.Name()] = true
-			names = append(names, p.Name())
-		}
-	}
-	sort.Strings(names)
-	return strings.Join(names, ", ")
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/trevorphillipscoding/nvy/internal/env"
 	"github.com/trevorphillipscoding/nvy/internal/shim"
+	"github.com/trevorphillipscoding/nvy/internal/verutil"
 	"github.com/trevorphillipscoding/nvy/plugins"
 )
 
@@ -44,23 +45,32 @@ func runLocal(_ *cobra.Command, args []string) error {
 	}
 	tool = p.Name()
 
+	ver := version
+	if verutil.IsPartial(version) {
+		if best := env.FindBestInstalled(tool, version); best != "" {
+			ver = best
+		} else {
+			return fmt.Errorf("%s %s.* is not installed — run: nvy install %s %s", tool, version, tool, version)
+		}
+	}
+
 	// Verify the requested version is actually installed before pinning it.
-	installDir := env.RuntimeDir(tool, version)
+	installDir := env.RuntimeDir(tool, ver)
 	if _, statErr := os.Stat(installDir); statErr != nil {
-		return fmt.Errorf("%s %s is not installed — run: nvy install %s %s", tool, version, tool, version)
+		return fmt.Errorf("%s %s is not installed — run: nvy install %s %s", tool, ver, tool, ver)
 	}
 
 	filename := "." + tool + "-version"
-	if err := os.WriteFile(filename, []byte(version+"\n"), 0644); err != nil {
+	if err := os.WriteFile(filename, []byte(ver+"\n"), 0644); err != nil {
 		return fmt.Errorf("writing %s: %w", filename, err)
 	}
 
 	cwd, _ := os.Getwd()
-	fmt.Printf("pinned %s %s in %s\n", tool, version, cwd)
+	fmt.Printf("pinned %s %s in %s\n", tool, ver, cwd)
 	fmt.Printf("  written to %s\n", filename)
 
 	// Show what the global version is, so the user knows what they're overriding.
-	if globalV, _ := shim.ResolveVersion(tool); globalV != "" && globalV != version {
+	if globalV, _ := shim.ResolveVersion(tool); globalV != "" && globalV != ver {
 		fmt.Printf("  (overrides global: %s)\n", globalV)
 	}
 	return nil

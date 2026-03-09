@@ -79,9 +79,9 @@ func TestFindLatestGoVersion(t *testing.T) {
 	}
 	body, _ := json.Marshal(releases)
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write(body)
+		_, _ = w.Write(body)
 	}))
 	defer srv.Close()
 
@@ -118,9 +118,9 @@ func TestFindLatestGoVersion(t *testing.T) {
 }
 
 func TestFindLatestGoVersion_ServerError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("internal error"))
+		_, _ = w.Write([]byte("internal error"))
 	}))
 	defer srv.Close()
 
@@ -135,8 +135,8 @@ func TestFindLatestGoVersion_ServerError(t *testing.T) {
 }
 
 func TestFindLatestGoVersion_BadJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("not json"))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("not json"))
 	}))
 	defer srv.Close()
 
@@ -150,7 +150,7 @@ func TestFindLatestGoVersion_BadJSON(t *testing.T) {
 	}
 }
 
-func TestResolve_PartialVersion(t *testing.T) {
+func TestLatestVersion(t *testing.T) {
 	releases := []struct {
 		Version string `json:"version"`
 		Stable  bool   `json:"stable"`
@@ -159,8 +159,8 @@ func TestResolve_PartialVersion(t *testing.T) {
 	}
 	body, _ := json.Marshal(releases)
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write(body)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(body)
 	}))
 	defer srv.Close()
 
@@ -169,15 +169,23 @@ func TestResolve_PartialVersion(t *testing.T) {
 	defer func() { releasesAPI = orig }()
 
 	p := New()
-	spec, err := p.Resolve("1.22", "linux", "amd64")
+	ver, err := p.LatestVersion("1.22", "linux", "amd64")
 	if err != nil {
-		t.Fatalf("Resolve partial version: %v", err)
+		t.Fatalf("LatestVersion: %v", err)
 	}
-	if spec.ResolvedVersion != "1.22.3" {
-		t.Errorf("ResolvedVersion = %q; want 1.22.3", spec.ResolvedVersion)
+	if ver != "1.22.3" {
+		t.Errorf("LatestVersion = %q; want 1.22.3", ver)
+	}
+}
+
+func TestResolve_FullVersion(t *testing.T) {
+	p := New()
+	spec, err := p.Resolve("1.22.3", "linux", "amd64")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
 	}
 	if !strings.Contains(spec.URL, "1.22.3") {
-		t.Errorf("URL should contain resolved version, got %q", spec.URL)
+		t.Errorf("URL should contain version, got %q", spec.URL)
 	}
 }
 

@@ -10,10 +10,10 @@ import (
 	"io"
 	"net/http"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/trevorphillipscoding/nvy/internal/verutil"
 	"github.com/trevorphillipscoding/nvy/plugins"
 )
 
@@ -43,12 +43,22 @@ func (p *pythonPlugin) Name() string { return "python" }
 
 func (p *pythonPlugin) Aliases() []string { return []string{"python3", "py"} }
 
+// LatestVersion returns the latest CPython version matching prefix (e.g. "3" or
+// "3.12") for the given platform. It queries the GitHub releases API and filters
+// by platform triple, so goos/goarch are required.
+func (p *pythonPlugin) LatestVersion(prefix, goos, goarch string) (string, error) {
+	triple, err := normalizeTriple(goos, goarch)
+	if err != nil {
+		return "", err
+	}
+	pyVersion, _, err := findLatest(prefix, triple)
+	return pyVersion, err
+}
+
 // Resolve builds the download spec for a CPython release from python-build-standalone.
 //
 // Version formats accepted:
 //
-//	3                  — discovers the latest 3.x.y release via the GitHub API
-//	3.12               — discovers the latest 3.12.x release via the GitHub API
 //	3.12.5             — discovers the latest release tag via the GitHub Atom feed
 //	3.12.5+20240814    — uses the given build tag directly (no network call)
 //
@@ -69,20 +79,10 @@ func (p *pythonPlugin) Resolve(version, goos, goarch string) (*plugins.DownloadS
 		return nil, err
 	}
 
-	var resolvedVersion string
 	if tag == "" {
-		if strings.Count(pyVersion, ".") < 2 {
-			// Partial version (major or major.minor): find the latest available release.
-			pyVersion, tag, err = findLatest(pyVersion, triple)
-			if err != nil {
-				return nil, err
-			}
-			resolvedVersion = pyVersion
-		} else {
-			tag, err = findReleaseTag(pyVersion, triple)
-			if err != nil {
-				return nil, err
-			}
+		tag, err = findReleaseTag(pyVersion, triple)
+		if err != nil {
+			return nil, err
 		}
 	}
 
@@ -95,7 +95,6 @@ func (p *pythonPlugin) Resolve(version, goos, goarch string) (*plugins.DownloadS
 		ChecksumURL:      checksumURL,
 		ChecksumFilename: filename, // SHASUMS256 mode: look up this filename in SHA256SUMS
 		StripComponents:  1,        // archive top-level is "python/"
-		ResolvedVersion:  resolvedVersion,
 	}, nil
 }
 
@@ -154,7 +153,7 @@ func findLatest(prefix, triple string) (pyVersion, tag string, err error) {
 		return "", "", fmt.Errorf("python plugin: fetching releases: %w", err)
 	}
 	body, err := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if err != nil {
 		return "", "", fmt.Errorf("python plugin: reading releases response: %w", err)
 	}
@@ -183,8 +182,8 @@ func findLatest(prefix, triple string) (pyVersion, tag string, err error) {
 			if m == nil || !strings.HasPrefix(m[1], assetPrefix) || m[4] != triple {
 				continue
 			}
-			v := parseVersionTuple(m[1])
-			if bestVersionStr == "" || cmpVersionTuple(v, bestVer) > 0 {
+			v := verutil.ParseTuple(m[1])
+			if bestVersionStr == "" || verutil.CmpTuple(v, bestVer) > 0 {
 				bestVer = v
 				bestVersionStr = m[1]
 				bestTag = m[3]
@@ -214,7 +213,7 @@ func findReleaseTag(pyVersion, triple string) (string, error) {
 		return "", fmt.Errorf("python plugin: fetching release feed: %w", err)
 	}
 	body, err := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if err != nil {
 		return "", fmt.Errorf("python plugin: reading release feed: %w", err)
 	}
@@ -242,7 +241,7 @@ func findReleaseTag(pyVersion, triple string) (string, error) {
 		url := fmt.Sprintf("%s/%s/%s", downloadBase, tag, filename)
 		r, err := client.Head(url)
 		if err == nil {
-			r.Body.Close()
+			_ = r.Body.Close()
 			if r.StatusCode == http.StatusOK {
 				return tag, nil
 			}
@@ -252,29 +251,3 @@ func findReleaseTag(pyVersion, triple string) (string, error) {
 	return "", fmt.Errorf("python plugin: no release found for Python %s on %s in the latest %d releases; specify a build tag to install older versions (e.g. %s+20240814)", pyVersion, triple, len(tags), pyVersion)
 }
 
-// parseVersionTuple parses "major.minor.patch" into an integer triple.
-func parseVersionTuple(v string) [3]int {
-	var result [3]int
-	parts := strings.SplitN(v, ".", 3)
-	for i, p := range parts {
-		if i >= 3 {
-			break
-		}
-		n, _ := strconv.Atoi(p)
-		result[i] = n
-	}
-	return result
-}
-
-// cmpVersionTuple returns -1, 0, or 1 for a < b, a == b, a > b.
-func cmpVersionTuple(a, b [3]int) int {
-	for i := range a {
-		if a[i] < b[i] {
-			return -1
-		}
-		if a[i] > b[i] {
-			return 1
-		}
-	}
-	return 0
-}

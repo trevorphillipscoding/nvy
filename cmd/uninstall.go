@@ -9,6 +9,7 @@ import (
 
 	"github.com/trevorphillipscoding/nvy/internal/env"
 	"github.com/trevorphillipscoding/nvy/internal/state"
+	"github.com/trevorphillipscoding/nvy/internal/verutil"
 	"github.com/trevorphillipscoding/nvy/plugins"
 )
 
@@ -39,6 +40,12 @@ func runUninstall(_ *cobra.Command, args []string) error {
 		return err
 	}
 	tool = p.Name() // normalise alias
+
+	if verutil.IsPartial(ver) {
+		if best := env.FindBestInstalled(tool, ver); best != "" {
+			ver = best
+		}
+	}
 
 	installDir := env.RuntimeDir(tool, ver)
 	if _, err := os.Stat(installDir); err != nil {

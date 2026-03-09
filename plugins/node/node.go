@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trevorphillipscoding/nvy/internal/version"
+	"github.com/trevorphillipscoding/nvy/internal/verutil"
 	"github.com/trevorphillipscoding/nvy/plugins"
 )
 
@@ -33,6 +33,13 @@ func (n *nodePlugin) Name() string { return "node" }
 
 func (n *nodePlugin) Aliases() []string { return []string{"nodejs", "node.js"} }
 
+// LatestVersion returns the latest Node.js release whose version starts with
+// prefix (e.g. "22" or "22.11"). goos/goarch are unused — Node releases are
+// platform-agnostic in the version numbering scheme.
+func (n *nodePlugin) LatestVersion(prefix, _, _ string) (string, error) {
+	return findLatestNodeVersion(prefix)
+}
+
 // Resolve builds the download spec for a Node.js release tarball.
 //
 // Official naming convention:
@@ -41,11 +48,6 @@ func (n *nodePlugin) Aliases() []string { return []string{"nodejs", "node.js"} }
 //	SHASUMS256.txt  ← multi-entry file; we look up our filename inside it
 //
 // Example: node-v20.11.1-linux-x64.tar.gz
-//
-// Partial versions (fewer than two dots) resolve to the latest matching release:
-//
-//	"22"    → latest 22.x.y
-//	"22.11" → latest 22.11.x
 func (n *nodePlugin) Resolve(ver, goos, goarch string) (*plugins.DownloadSpec, error) {
 	os, err := normalizeOS(goos)
 	if err != nil {
@@ -56,18 +58,7 @@ func (n *nodePlugin) Resolve(ver, goos, goarch string) (*plugins.DownloadSpec, e
 		return nil, err
 	}
 
-	var resolvedVersion string
-	if strings.Count(ver, ".") < 2 {
-		latest, err := findLatestNodeVersion(ver)
-		if err != nil {
-			return nil, err
-		}
-		resolvedVersion = latest
-		ver = latest
-	} else {
-		ver = version.Normalize(ver)
-	}
-
+	ver = verutil.Normalize(ver)
 	// Node uses "v" prefix in both the URL path and the archive filename.
 	filename := fmt.Sprintf("node-v%s-%s-%s.tar.gz", ver, os, arch)
 	url := fmt.Sprintf("%s/v%s/%s", distBase, ver, filename)
@@ -78,7 +69,6 @@ func (n *nodePlugin) Resolve(ver, goos, goarch string) (*plugins.DownloadSpec, e
 		ChecksumURL:      checksumURL,
 		ChecksumFilename: filename, // SHASUMS256 mode: look up this filename in the file
 		StripComponents:  1,        // archive has a top-level "node-v<version>-<os>-<arch>/" directory
-		ResolvedVersion:  resolvedVersion,
 	}, nil
 }
 
@@ -92,7 +82,7 @@ func findLatestNodeVersion(prefix string) (string, error) {
 		return "", fmt.Errorf("node plugin: fetching releases: %w", err)
 	}
 	body, err := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if err != nil {
 		return "", fmt.Errorf("node plugin: reading releases response: %w", err)
 	}

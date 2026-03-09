@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trevorphillipscoding/nvy/internal/version"
+	"github.com/trevorphillipscoding/nvy/internal/verutil"
 	"github.com/trevorphillipscoding/nvy/plugins"
 )
 
@@ -33,6 +33,12 @@ func (g *goPlugin) Name() string { return "go" }
 
 func (g *goPlugin) Aliases() []string { return []string{"golang"} }
 
+// LatestVersion returns the latest stable Go release whose version starts with prefix
+// (e.g. "1" or "1.26"). goos/goarch are unused — Go releases are platform-agnostic.
+func (g *goPlugin) LatestVersion(prefix, _, _ string) (string, error) {
+	return findLatestGoVersion(prefix)
+}
+
 // Resolve builds the download spec for a Go release tarball.
 //
 // Official naming convention:
@@ -41,12 +47,6 @@ func (g *goPlugin) Aliases() []string { return []string{"golang"} }
 //	go<version>.<os>-<arch>.tar.gz.sha256  ← single-line hex SHA-256
 //
 // Example: go1.22.1.linux-amd64.tar.gz
-//
-// Partial versions (fewer than two dots, no +tag) resolve to the latest
-// matching stable release:
-//
-//	"1"    → latest 1.x.y
-//	"1.26" → latest 1.26.x
 func (g *goPlugin) Resolve(ver, goos, goarch string) (*plugins.DownloadSpec, error) {
 	os, err := normalizeOS(goos)
 	if err != nil {
@@ -57,29 +57,15 @@ func (g *goPlugin) Resolve(ver, goos, goarch string) (*plugins.DownloadSpec, err
 		return nil, err
 	}
 
-	var resolvedVersion string
-	base := strings.SplitN(ver, "+", 2)[0]
-	if strings.Count(base, ".") < 2 {
-		latest, err := findLatestGoVersion(base)
-		if err != nil {
-			return nil, err
-		}
-		resolvedVersion = latest
-		ver = latest
-	} else {
-		ver = version.Normalize(ver)
-	}
-
+	ver = verutil.Normalize(ver)
 	filename := fmt.Sprintf("go%s.%s-%s.tar.gz", ver, os, arch)
 	url := fmt.Sprintf("%s/%s", downloadBase, filename)
 
 	return &plugins.DownloadSpec{
-		URL: url,
-		// The .sha256 file contains a single hex-encoded SHA-256 hash, no filename prefix.
+		URL:              url,
 		ChecksumURL:      url + ".sha256",
 		ChecksumFilename: "", // plain mode: response body is the raw hex hash
 		StripComponents:  1,  // archive has a top-level "go/" directory to strip
-		ResolvedVersion:  resolvedVersion,
 	}, nil
 }
 
@@ -93,7 +79,7 @@ func findLatestGoVersion(prefix string) (string, error) {
 		return "", fmt.Errorf("go plugin: fetching releases: %w", err)
 	}
 	body, err := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if err != nil {
 		return "", fmt.Errorf("go plugin: reading releases response: %w", err)
 	}

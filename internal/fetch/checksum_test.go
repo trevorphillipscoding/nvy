@@ -57,8 +57,8 @@ func TestResolveChecksum_NoHashOrURL(t *testing.T) {
 }
 
 func TestResolveChecksum_RawHexURL(t *testing.T) {
-	withTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("  abc123def456  \n")) //nolint:errcheck
+	withTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("  abc123def456  \n"))
 	}), func(url string) {
 		hash, err := ResolveChecksum("", url, "")
 		if err != nil {
@@ -71,8 +71,8 @@ func TestResolveChecksum_RawHexURL(t *testing.T) {
 }
 
 func TestResolveChecksum_SHASUMSFile(t *testing.T) {
-	withTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("abc123  file-a.tar.gz\ndef456  file-b.tar.gz\n")) //nolint:errcheck
+	withTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("abc123  file-a.tar.gz\ndef456  file-b.tar.gz\n"))
 	}), func(url string) {
 		hash, err := ResolveChecksum("", url, "file-b.tar.gz")
 		if err != nil {

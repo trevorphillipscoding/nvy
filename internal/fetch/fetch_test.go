@@ -64,15 +64,15 @@ func TestDownload_RejectsHTTP(t *testing.T) {
 	}
 }
 
-func TestFetchBytes_RejectsHTTP(t *testing.T) {
-	if _, err := FetchBytes("http://example.com/checksums"); err == nil {
+func TestBytes_RejectsHTTP(t *testing.T) {
+	if _, err := Bytes("http://example.com/checksums"); err == nil {
 		t.Error("expected error for HTTP URL, got nil")
 	}
 }
 
 func TestDownload_Success(t *testing.T) {
-	withTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("file content")) //nolint:errcheck
+	withTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("file content"))
 	}), func(url string) {
 		tmp := filepath.Join(t.TempDir(), "out")
 		if err := Download(url, tmp); err != nil {
@@ -96,13 +96,13 @@ func TestDownload_NotFound(t *testing.T) {
 	})
 }
 
-func TestFetchBytes_Success(t *testing.T) {
-	withTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("checksum data")) //nolint:errcheck
+func TestBytes_Success(t *testing.T) {
+	withTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("checksum data"))
 	}), func(url string) {
-		data, err := FetchBytes(url)
+		data, err := Bytes(url)
 		if err != nil {
-			t.Fatalf("FetchBytes: %v", err)
+			t.Fatalf("Bytes: %v", err)
 		}
 		if string(data) != "checksum data" {
 			t.Errorf("got %q; want %q", data, "checksum data")
@@ -110,11 +110,11 @@ func TestFetchBytes_Success(t *testing.T) {
 	})
 }
 
-func TestFetchBytes_NotFound(t *testing.T) {
+func TestBytes_NotFound(t *testing.T) {
 	withTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 	}), func(url string) {
-		if _, err := FetchBytes(url); err == nil {
+		if _, err := Bytes(url); err == nil {
 			t.Error("expected error for 404, got nil")
 		}
 	})

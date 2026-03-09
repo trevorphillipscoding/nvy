@@ -174,14 +174,14 @@ func TestPythonPlugin_UnsupportedPlatform(t *testing.T) {
 
 func TestPythonPlugin_ExplicitTagNoResolvedVersion(t *testing.T) {
 	p := python.New()
-	// When a full version+tag is provided, ResolvedVersion should be empty
-	// (no resolution was needed; the install dir uses the input version as-is).
+	// When a full version+tag is provided, no resolution was needed;
+	// the install dir uses the input version as-is.
 	spec, err := p.Resolve("3.12.5+20240814", "linux", "amd64")
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if spec.ResolvedVersion != "" {
-		t.Errorf("ResolvedVersion should be empty for explicit version+tag, got %q", spec.ResolvedVersion)
+	if spec.URL == "" {
+		t.Error("URL must not be empty for explicit version+tag")
 	}
 }
 

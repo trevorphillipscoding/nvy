@@ -31,7 +31,7 @@ install:
 test:
 	go test ./...
 
-## lint: run golangci-lint
+## lint: run golangci-lint (install: https://github.com/golangci/golangci-lint)
 lint:
 	golangci-lint run ./...
 

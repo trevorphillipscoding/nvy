@@ -77,8 +77,8 @@ func TestFindLatestNodeVersion(t *testing.T) {
 	}
 	body, _ := json.Marshal(releases)
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write(body)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(body)
 	}))
 	defer srv.Close()
 
@@ -114,7 +114,7 @@ func TestFindLatestNodeVersion(t *testing.T) {
 }
 
 func TestFindLatestNodeVersion_ServerError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
@@ -130,8 +130,8 @@ func TestFindLatestNodeVersion_ServerError(t *testing.T) {
 }
 
 func TestFindLatestNodeVersion_BadJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("not json"))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("not json"))
 	}))
 	defer srv.Close()
 
@@ -145,7 +145,7 @@ func TestFindLatestNodeVersion_BadJSON(t *testing.T) {
 	}
 }
 
-func TestResolve_PartialVersion(t *testing.T) {
+func TestLatestVersion(t *testing.T) {
 	releases := []struct {
 		Version string `json:"version"`
 	}{
@@ -153,8 +153,8 @@ func TestResolve_PartialVersion(t *testing.T) {
 	}
 	body, _ := json.Marshal(releases)
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write(body)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(body)
 	}))
 	defer srv.Close()
 
@@ -163,15 +163,23 @@ func TestResolve_PartialVersion(t *testing.T) {
 	defer func() { releasesAPI = orig }()
 
 	p := New()
-	spec, err := p.Resolve("22", "linux", "amd64")
+	ver, err := p.LatestVersion("22", "linux", "amd64")
 	if err != nil {
-		t.Fatalf("Resolve partial version: %v", err)
+		t.Fatalf("LatestVersion: %v", err)
 	}
-	if spec.ResolvedVersion != "22.13.1" {
-		t.Errorf("ResolvedVersion = %q; want 22.13.1", spec.ResolvedVersion)
+	if ver != "22.13.1" {
+		t.Errorf("LatestVersion = %q; want 22.13.1", ver)
+	}
+}
+
+func TestResolve_FullVersion(t *testing.T) {
+	p := New()
+	spec, err := p.Resolve("22.13.1", "linux", "amd64")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
 	}
 	if !strings.Contains(spec.URL, "22.13.1") {
-		t.Errorf("URL should contain resolved version, got %q", spec.URL)
+		t.Errorf("URL should contain version, got %q", spec.URL)
 	}
 }
 

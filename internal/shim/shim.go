@@ -26,7 +26,7 @@ import (
 
 	"github.com/trevorphillipscoding/nvy/internal/env"
 	"github.com/trevorphillipscoding/nvy/internal/state"
-	"github.com/trevorphillipscoding/nvy/internal/version"
+	"github.com/trevorphillipscoding/nvy/internal/verutil"
 )
 
 // Run resolves the active version for binary's owning tool, then replaces the
@@ -73,13 +73,13 @@ func ResolveVersion(tool string) (string, error) {
 	// 1. Local version file (.<tool>-version), walking up from cwd.
 	if cwd, err := os.Getwd(); err == nil {
 		if v := findLocalVersion(tool, cwd); v != "" {
-			return version.Normalize(v), nil
+			return resolveToInstalled(tool, v), nil
 		}
 	}
 
 	// 2. Global version.
 	if v, ok := state.GetGlobal(tool); ok {
-		return version.Normalize(v), nil
+		return resolveToInstalled(tool, v), nil
 	}
 
 	return "", fmt.Errorf(
@@ -88,6 +88,21 @@ func ResolveVersion(tool string) (string, error) {
 			"  set local:  nvy local %s <version>",
 		tool, tool, tool,
 	)
+}
+
+// resolveToInstalled maps a possibly-partial version string (e.g. "3.13") to
+// the best matching version already installed on disk (e.g. "3.13.2").
+// For full versions it falls through to verutil.Normalize unchanged.
+// If no installed match is found for a partial version, we still normalize so
+// the subsequent stat check produces a clear "not installed" error.
+func resolveToInstalled(tool, v string) string {
+	base := strings.SplitN(v, "+", 2)[0]
+	if strings.Count(base, ".") < 2 {
+		if best := env.FindBestInstalled(tool, base); best != "" {
+			return best
+		}
+	}
+	return verutil.Normalize(v)
 }
 
 // FindLocalVersion walks up from dir looking for a .<tool>-version file.

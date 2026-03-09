@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
+
+	"github.com/trevorphillipscoding/nvy/internal/verutil"
 )
 
 func TestParseVersion(t *testing.T) {
@@ -57,7 +58,7 @@ func TestParseVersionTuple(t *testing.T) {
 		{"3", [3]int{3, 0, 0}},
 	}
 	for _, c := range cases {
-		got := parseVersionTuple(c.input)
+		got := verutil.ParseTuple(c.input)
 		if got != c.want {
 			t.Errorf("parseVersionTuple(%q) = %v; want %v", c.input, got, c.want)
 		}
@@ -78,7 +79,7 @@ func TestCmpVersionTuple(t *testing.T) {
 		{[3]int{0, 0, 0}, [3]int{0, 0, 0}, 0},
 	}
 	for _, c := range cases {
-		got := cmpVersionTuple(c.a, c.b)
+		got := verutil.CmpTuple(c.a, c.b)
 		if got != c.want {
 			t.Errorf("cmpVersionTuple(%v, %v) = %d; want %d", c.a, c.b, got, c.want)
 		}
@@ -133,9 +134,9 @@ func makeFindLatestServer(t *testing.T, triple string) *httptest.Server {
 		Assets interface{} `json:"assets"`
 	}{{Assets: assets}}
 	body, _ := json.Marshal(releases)
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write(body)
+		_, _ = w.Write(body)
 	}))
 }
 
@@ -198,7 +199,7 @@ func TestFindLatest_NotFound(t *testing.T) {
 }
 
 func TestFindLatest_ServerError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
@@ -214,8 +215,8 @@ func TestFindLatest_ServerError(t *testing.T) {
 }
 
 func TestFindLatest_BadJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("not json"))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("not json"))
 	}))
 	defer srv.Close()
 
@@ -230,7 +231,7 @@ func TestFindLatest_BadJSON(t *testing.T) {
 }
 
 func TestFindReleaseTag_AtomServerError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
@@ -246,8 +247,8 @@ func TestFindReleaseTag_AtomServerError(t *testing.T) {
 }
 
 func TestFindReleaseTag_NoTags(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("<feed><entry>no tags here</entry></feed>"))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("<feed><entry>no tags here</entry></feed>"))
 	}))
 	defer srv.Close()
 
@@ -261,7 +262,7 @@ func TestFindReleaseTag_NoTags(t *testing.T) {
 	}
 }
 
-func TestResolve_PartialVersion(t *testing.T) {
+func TestLatestVersion(t *testing.T) {
 	triple := "x86_64-unknown-linux-gnu"
 	assets := []struct {
 		Name string `json:"name"`
@@ -273,8 +274,8 @@ func TestResolve_PartialVersion(t *testing.T) {
 	}{{Assets: assets}}
 	body, _ := json.Marshal(releases)
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write(body)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(body)
 	}))
 	defer srv.Close()
 
@@ -283,14 +284,11 @@ func TestResolve_PartialVersion(t *testing.T) {
 	defer func() { releasesAPI = orig }()
 
 	p := New()
-	spec, err := p.Resolve("3.12", "linux", "amd64")
+	ver, err := p.LatestVersion("3.12", "linux", "amd64")
 	if err != nil {
-		t.Fatalf("Resolve partial version: %v", err)
+		t.Fatalf("LatestVersion: %v", err)
 	}
-	if spec.ResolvedVersion != "3.12.8" {
-		t.Errorf("ResolvedVersion = %q; want 3.12.8", spec.ResolvedVersion)
-	}
-	if !strings.Contains(spec.URL, "3.12.8") {
-		t.Errorf("URL should contain resolved version, got %q", spec.URL)
+	if ver != "3.12.8" {
+		t.Errorf("LatestVersion = %q; want 3.12.8", ver)
 	}
 }

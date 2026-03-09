@@ -18,7 +18,7 @@ func ResolveChecksum(sha256, checksumURL, checksumFilename string) (string, erro
 	if checksumURL == "" {
 		return "", fmt.Errorf("neither SHA256 hash nor checksum URL provided")
 	}
-	data, err := FetchBytes(checksumURL)
+	data, err := Bytes(checksumURL)
 	if err != nil {
 		return "", fmt.Errorf("fetching checksum from %s: %w", checksumURL, err)
 	}

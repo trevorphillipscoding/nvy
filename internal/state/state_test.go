@@ -39,8 +39,12 @@ func TestSetAndGetGlobal(t *testing.T) {
 func TestAllGlobals(t *testing.T) {
 	t.Setenv("NVY_DIR", t.TempDir())
 
-	SetGlobal("go", "1.22.1")   //nolint:errcheck
-	SetGlobal("node", "20.0.0") //nolint:errcheck
+	if err := SetGlobal("go", "1.22.1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetGlobal("node", "20.0.0"); err != nil {
+		t.Fatal(err)
+	}
 
 	all, err := AllGlobals()
 	if err != nil {
@@ -70,7 +74,9 @@ func TestLoadMissingFile(t *testing.T) {
 func TestAtomicWrite(t *testing.T) {
 	t.Setenv("NVY_DIR", t.TempDir())
 
-	SetGlobal("go", "1.22.1") //nolint:errcheck
+	if err := SetGlobal("go", "1.22.1"); err != nil {
+		t.Fatal(err)
+	}
 
 	// Verify the file was written.
 	if _, err := os.Stat(env.GlobalStatePath()); err != nil {
@@ -90,8 +96,12 @@ func TestAtomicWrite(t *testing.T) {
 func TestDeleteGlobal(t *testing.T) {
 	t.Setenv("NVY_DIR", t.TempDir())
 
-	SetGlobal("go", "1.22.1")   //nolint:errcheck
-	SetGlobal("node", "20.0.0") //nolint:errcheck
+	if err := SetGlobal("go", "1.22.1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetGlobal("node", "20.0.0"); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := DeleteGlobal("go"); err != nil {
 		t.Fatalf("DeleteGlobal: %v", err)
@@ -144,8 +154,12 @@ func TestRegisterAndLookupShims(t *testing.T) {
 func TestUnregisterShims(t *testing.T) {
 	t.Setenv("NVY_DIR", t.TempDir())
 
-	RegisterShims("go", []string{"go", "gofmt"})   //nolint:errcheck
-	RegisterShims("node", []string{"node", "npm"}) //nolint:errcheck
+	if err := RegisterShims("go", []string{"go", "gofmt"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := RegisterShims("node", []string{"node", "npm"}); err != nil {
+		t.Fatal(err)
+	}
 
 	removed, err := UnregisterShims("go")
 	if err != nil {

@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -85,7 +86,7 @@ func runList(_ *cobra.Command, args []string) error {
 // *  = active global
 // »  = local pin for the current directory (from .<tool>-version)
 func printTool(tool string, globals map[string]string, cwd string) error {
-	toolDir := env.RuntimesDir() + "/" + tool
+	toolDir := filepath.Join(env.RuntimesDir(), tool)
 	versions, err := listVersions(toolDir)
 	if err != nil {
 		fmt.Printf("%s  (none installed)\n", tool)

@@ -29,8 +29,8 @@ func buildTarGz(t *testing.T, files map[string]string) []byte {
 			t.Fatal(err)
 		}
 	}
-	tw.Close()
-	gz.Close()
+	_ = tw.Close()
+	_ = gz.Close()
 	return buf.Bytes()
 }
 
@@ -65,18 +65,24 @@ func TestExtractTarGz_ZipSlipRejected(t *testing.T) {
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
-	tw.WriteHeader(&tar.Header{ //nolint:errcheck
+	if err := tw.WriteHeader(&tar.Header{
 		Name:     "prefix/../../../etc/evil",
 		Mode:     0644,
 		Size:     5,
 		Typeflag: tar.TypeReg,
-	})
-	tw.Write([]byte("evil")) //nolint:errcheck
-	tw.Close()
-	gz.Close()
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write([]byte("evil")); err != nil {
+		t.Fatal(err)
+	}
+	_ = tw.Close()
+	_ = gz.Close()
 
 	src := filepath.Join(t.TempDir(), "evil.tar.gz")
-	os.WriteFile(src, buf.Bytes(), 0600) //nolint:errcheck
+	if err := os.WriteFile(src, buf.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
 
 	dest := t.TempDir()
 	err := ExtractTarGz(src, dest, 1)
