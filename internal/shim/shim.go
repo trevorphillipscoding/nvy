@@ -25,8 +25,8 @@ import (
 	"syscall"
 
 	"github.com/trevorphillipscoding/nvy/internal/env"
+	"github.com/trevorphillipscoding/nvy/internal/semver"
 	"github.com/trevorphillipscoding/nvy/internal/state"
-	"github.com/trevorphillipscoding/nvy/internal/verutil"
 )
 
 // Run resolves the active version for binary's owning tool, then replaces the
@@ -73,13 +73,13 @@ func ResolveVersion(tool string) (string, error) {
 	// 1. Local version file (.<tool>-version), walking up from cwd.
 	if cwd, err := os.Getwd(); err == nil {
 		if v := findLocalVersion(tool, cwd); v != "" {
-			return resolveToInstalled(tool, v), nil
+			return resolveToInstalled(tool, v)
 		}
 	}
 
 	// 2. Global version.
 	if v, ok := state.GetGlobal(tool); ok {
-		return resolveToInstalled(tool, v), nil
+		return resolveToInstalled(tool, v)
 	}
 
 	return "", fmt.Errorf(
@@ -90,19 +90,18 @@ func ResolveVersion(tool string) (string, error) {
 	)
 }
 
-// resolveToInstalled maps a possibly-partial version string (e.g. "3.13") to
-// the best matching version already installed on disk (e.g. "3.13.2").
-// For full versions it falls through to verutil.Normalize unchanged.
-// If no installed match is found for a partial version, we still normalize so
-// the subsequent stat check produces a clear "not installed" error.
-func resolveToInstalled(tool, v string) string {
-	base := strings.SplitN(v, "+", 2)[0]
-	if strings.Count(base, ".") < 2 {
-		if best := env.FindBestInstalled(tool, base); best != "" {
-			return best
-		}
+// resolveToInstalled resolves local/global configured versions against installed
+// versions using the same semantic rules used everywhere else in nvy.
+func resolveToInstalled(tool, requested string) (string, error) {
+	installed, err := env.InstalledVersions(tool)
+	if err != nil {
+		return "", fmt.Errorf("%s has no installed versions", tool)
 	}
-	return verutil.Normalize(v)
+	v, err := semver.Resolve(strings.TrimSpace(requested), installed)
+	if err != nil {
+		return "", fmt.Errorf("resolving installed version for %s %s: %w", tool, requested, err)
+	}
+	return v, nil
 }
 
 // FindLocalVersion walks up from dir looking for a .<tool>-version file.

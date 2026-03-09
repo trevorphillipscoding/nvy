@@ -8,7 +8,6 @@ import (
 
 	"github.com/trevorphillipscoding/nvy/internal/env"
 	"github.com/trevorphillipscoding/nvy/internal/shim"
-	"github.com/trevorphillipscoding/nvy/internal/verutil"
 	"github.com/trevorphillipscoding/nvy/plugins"
 )
 
@@ -45,13 +44,9 @@ func runLocal(_ *cobra.Command, args []string) error {
 	}
 	tool = p.Name()
 
-	ver := version
-	if verutil.IsPartial(version) {
-		if best := env.FindBestInstalled(tool, version); best != "" {
-			ver = best
-		} else {
-			return fmt.Errorf("%s %s.* is not installed — run: nvy install %s %s", tool, version, tool, version)
-		}
+	ver, err := resolveInstalledVersion(tool, version)
+	if err != nil {
+		return fmt.Errorf("resolving installed version for %s %s: %w", tool, version, err)
 	}
 
 	// Verify the requested version is actually installed before pinning it.

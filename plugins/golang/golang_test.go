@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/trevorphillipscoding/nvy/internal/semver"
 )
 
 func TestNormalizeOS(t *testing.T) {
@@ -66,7 +68,7 @@ func TestNormalizeArch(t *testing.T) {
 	}
 }
 
-func TestFindLatestGoVersion(t *testing.T) {
+func TestFetchStableGoVersions(t *testing.T) {
 	releases := []struct {
 		Version string `json:"version"`
 		Stable  bool   `json:"stable"`
@@ -89,35 +91,21 @@ func TestFindLatestGoVersion(t *testing.T) {
 	releasesAPI = srv.URL
 	defer func() { releasesAPI = orig }()
 
-	cases := []struct {
-		prefix  string
-		want    string
-		wantErr bool
-	}{
-		{"1.24", "1.24.1", false},
-		{"1.23", "1.23.5", false},
-		{"1.22", "1.22.12", false},
-		{"1.25", "", true},
+	versions, err := fetchStableGoVersions()
+	if err != nil {
+		t.Fatalf("fetchStableGoVersions: %v", err)
 	}
-	for _, c := range cases {
-		got, err := findLatestGoVersion(c.prefix)
-		if c.wantErr {
-			if err == nil {
-				t.Errorf("findLatestGoVersion(%q): expected error, got %q", c.prefix, got)
-			}
-			continue
-		}
-		if err != nil {
-			t.Errorf("findLatestGoVersion(%q): unexpected error: %v", c.prefix, err)
-			continue
-		}
-		if got != c.want {
-			t.Errorf("findLatestGoVersion(%q) = %q; want %q", c.prefix, got, c.want)
-		}
+
+	resolved, err := semver.Resolve("1.24", versions)
+	if err != nil {
+		t.Fatalf("Resolve 1.24: %v", err)
+	}
+	if resolved != "1.24.1" {
+		t.Errorf("Resolve(1.24) = %q; want 1.24.1", resolved)
 	}
 }
 
-func TestFindLatestGoVersion_ServerError(t *testing.T) {
+func TestFetchStableGoVersions_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("internal error"))
@@ -128,13 +116,13 @@ func TestFindLatestGoVersion_ServerError(t *testing.T) {
 	releasesAPI = srv.URL
 	defer func() { releasesAPI = orig }()
 
-	_, err := findLatestGoVersion("1.22")
+	_, err := fetchStableGoVersions()
 	if err == nil {
 		t.Error("expected error for server 500, got nil")
 	}
 }
 
-func TestFindLatestGoVersion_BadJSON(t *testing.T) {
+func TestFetchStableGoVersions_BadJSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("not json"))
 	}))
@@ -144,13 +132,13 @@ func TestFindLatestGoVersion_BadJSON(t *testing.T) {
 	releasesAPI = srv.URL
 	defer func() { releasesAPI = orig }()
 
-	_, err := findLatestGoVersion("1.22")
+	_, err := fetchStableGoVersions()
 	if err == nil {
 		t.Error("expected error for bad JSON, got nil")
 	}
 }
 
-func TestLatestVersion(t *testing.T) {
+func TestAvailableVersions(t *testing.T) {
 	releases := []struct {
 		Version string `json:"version"`
 		Stable  bool   `json:"stable"`
@@ -169,12 +157,16 @@ func TestLatestVersion(t *testing.T) {
 	defer func() { releasesAPI = orig }()
 
 	p := New()
-	ver, err := p.LatestVersion("1.22", "linux", "amd64")
+	versions, err := p.AvailableVersions("linux", "amd64")
 	if err != nil {
-		t.Fatalf("LatestVersion: %v", err)
+		t.Fatalf("AvailableVersions: %v", err)
+	}
+	ver, err := semver.Resolve("1.22", versions)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
 	}
 	if ver != "1.22.3" {
-		t.Errorf("LatestVersion = %q; want 1.22.3", ver)
+		t.Errorf("resolved version = %q; want 1.22.3", ver)
 	}
 }
 

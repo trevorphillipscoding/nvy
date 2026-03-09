@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trevorphillipscoding/nvy/internal/verutil"
+	"github.com/trevorphillipscoding/nvy/internal/semver"
 	"github.com/trevorphillipscoding/nvy/plugins"
 )
 
@@ -33,11 +33,9 @@ func (n *nodePlugin) Name() string { return "node" }
 
 func (n *nodePlugin) Aliases() []string { return []string{"nodejs", "node.js"} }
 
-// LatestVersion returns the latest Node.js release whose version starts with
-// prefix (e.g. "22" or "22.11"). goos/goarch are unused — Node releases are
-// platform-agnostic in the version numbering scheme.
-func (n *nodePlugin) LatestVersion(prefix, _, _ string) (string, error) {
-	return findLatestNodeVersion(prefix)
+// AvailableVersions returns Node.js releases as exact semantic versions.
+func (n *nodePlugin) AvailableVersions(_, _ string) ([]string, error) {
+	return fetchNodeVersions()
 }
 
 // Resolve builds the download spec for a Node.js release tarball.
@@ -58,7 +56,11 @@ func (n *nodePlugin) Resolve(ver, goos, goarch string) (*plugins.DownloadSpec, e
 		return nil, err
 	}
 
-	ver = verutil.Normalize(ver)
+	v, err := semver.ParseVersion(ver)
+	if err != nil {
+		return nil, fmt.Errorf("node plugin: %w", err)
+	}
+	ver = v.String()
 	// Node uses "v" prefix in both the URL path and the archive filename.
 	filename := fmt.Sprintf("node-v%s-%s-%s.tar.gz", ver, os, arch)
 	url := fmt.Sprintf("%s/v%s/%s", distBase, ver, filename)
@@ -72,39 +74,39 @@ func (n *nodePlugin) Resolve(ver, goos, goarch string) (*plugins.DownloadSpec, e
 	}, nil
 }
 
-// findLatestNodeVersion returns the latest Node.js release whose version
-// starts with prefix (e.g. "22" or "22.11"). The dist/index.json is
-// ordered newest-first, so the first match is the latest.
-func findLatestNodeVersion(prefix string) (string, error) {
+func fetchNodeVersions() ([]string, error) {
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Get(releasesAPI)
 	if err != nil {
-		return "", fmt.Errorf("node plugin: fetching releases: %w", err)
+		return nil, fmt.Errorf("node plugin: fetching releases: %w", err)
 	}
 	body, err := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 	if err != nil {
-		return "", fmt.Errorf("node plugin: reading releases response: %w", err)
+		return nil, fmt.Errorf("node plugin: reading releases response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("node plugin: releases API returned %s", resp.Status)
+		return nil, fmt.Errorf("node plugin: releases API returned %s", resp.Status)
 	}
 
 	var releases []struct {
 		Version string `json:"version"`
 	}
 	if err := json.Unmarshal(body, &releases); err != nil {
-		return "", fmt.Errorf("node plugin: parsing releases JSON: %w", err)
+		return nil, fmt.Errorf("node plugin: parsing releases JSON: %w", err)
 	}
 
-	// Versions are "v22.13.1"; add a dot after prefix to avoid "v2" matching "v20.x".
-	wantPrefix := "v" + prefix + "."
+	versions := make([]string, 0, len(releases))
 	for _, r := range releases {
-		if strings.HasPrefix(r.Version, wantPrefix) {
-			return strings.TrimPrefix(r.Version, "v"), nil
+		v := strings.TrimPrefix(r.Version, "v")
+		if _, parseErr := semver.ParseVersion(v); parseErr == nil {
+			versions = append(versions, v)
 		}
 	}
-	return "", fmt.Errorf("node plugin: no release found for Node.js %s.*", prefix)
+	if len(versions) == 0 {
+		return nil, fmt.Errorf("node plugin: no semantic versions found")
+	}
+	return versions, nil
 }
 
 func normalizeOS(goos string) (string, error) {

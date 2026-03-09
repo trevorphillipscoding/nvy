@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/trevorphillipscoding/nvy/internal/env"
+	"github.com/trevorphillipscoding/nvy/internal/semver"
 	"github.com/trevorphillipscoding/nvy/internal/shim"
 	"github.com/trevorphillipscoding/nvy/internal/state"
 	"github.com/trevorphillipscoding/nvy/plugins"
@@ -139,7 +140,7 @@ func listVersions(toolDir string) ([]string, error) {
 			versions = append(versions, e.Name())
 		}
 	}
-	sort.Sort(sort.Reverse(sort.StringSlice(versions)))
+	semver.SortStringsDesc(versions)
 	return versions, nil
 }
 

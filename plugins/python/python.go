@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trevorphillipscoding/nvy/internal/verutil"
+	"github.com/trevorphillipscoding/nvy/internal/semver"
 	"github.com/trevorphillipscoding/nvy/plugins"
 )
 
@@ -43,24 +43,16 @@ func (p *pythonPlugin) Name() string { return "python" }
 
 func (p *pythonPlugin) Aliases() []string { return []string{"python3", "py"} }
 
-// LatestVersion returns the latest CPython version matching prefix (e.g. "3" or
-// "3.12") for the given platform. It queries the GitHub releases API and filters
-// by platform triple, so goos/goarch are required.
-func (p *pythonPlugin) LatestVersion(prefix, goos, goarch string) (string, error) {
+// AvailableVersions returns available exact CPython semantic versions for the platform.
+func (p *pythonPlugin) AvailableVersions(goos, goarch string) ([]string, error) {
 	triple, err := normalizeTriple(goos, goarch)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	pyVersion, _, err := findLatest(prefix, triple)
-	return pyVersion, err
+	return listAvailableVersions(triple)
 }
 
 // Resolve builds the download spec for a CPython release from python-build-standalone.
-//
-// Version formats accepted:
-//
-//	3.12.5             — discovers the latest release tag via the GitHub Atom feed
-//	3.12.5+20240814    — uses the given build tag directly (no network call)
 //
 // Official naming convention:
 //
@@ -74,11 +66,10 @@ func (p *pythonPlugin) Resolve(version, goos, goarch string) (*plugins.DownloadS
 		return nil, err
 	}
 
-	pyVersion, tag, err := parseVersion(version)
+	pyVersion, tag, err := parseResolvedVersion(version)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("python plugin: %w", err)
 	}
-
 	if tag == "" {
 		tag, err = findReleaseTag(pyVersion, triple)
 		if err != nil {
@@ -98,22 +89,20 @@ func (p *pythonPlugin) Resolve(version, goos, goarch string) (*plugins.DownloadS
 	}, nil
 }
 
-// parseVersion splits an optional +tag suffix from the version string.
-//
-//	"3.12.5"          → ("3.12.5", "", nil)
-//	"3.12.5+20240814" → ("3.12.5", "20240814", nil)
-//	"3.12"            → ("3.12", "", nil)
-//	"3"               → ("3", "", nil)
-func parseVersion(version string) (pyVersion, tag string, err error) {
-	parts := strings.SplitN(version, "+", 2)
-	pyVersion = strings.TrimSpace(parts[0])
-	if pyVersion == "" {
-		return "", "", fmt.Errorf("python plugin: empty version string")
+func parseResolvedVersion(input string) (version string, tag string, err error) {
+	base, build, hasBuild := strings.Cut(strings.TrimSpace(input), "+")
+	v, err := semver.ParseVersion(base)
+	if err != nil {
+		return "", "", err
 	}
-	if len(parts) == 2 {
-		tag = strings.TrimSpace(parts[1])
+	if !hasBuild {
+		return v.String(), "", nil
 	}
-	return pyVersion, tag, nil
+	build = strings.TrimSpace(build)
+	if build == "" {
+		return "", "", fmt.Errorf("invalid build tag in %q", input)
+	}
+	return v.String(), build, nil
 }
 
 // normalizeTriple maps GOOS/GOARCH to the target triple used in python-build-standalone filenames.
@@ -132,33 +121,26 @@ func normalizeTriple(goos, goarch string) (string, error) {
 	}
 }
 
-// findLatest fetches the GitHub releases API and returns the highest available
-// CPython version whose version string starts with prefix (e.g. "3" or "3.12")
-// and matches the given platform triple.
-//
-// python-build-standalone releases contain multiple Python versions (3.12.x,
-// 3.13.x, …) per tag, so we compare full version tuples to find the true
-// latest, not just the highest patch number.
-func findLatest(prefix, triple string) (pyVersion, tag string, err error) {
+func listAvailableVersions(triple string) ([]string, error) {
 	client := &http.Client{Timeout: 30 * time.Second}
 
 	req, err := http.NewRequest(http.MethodGet, releasesAPI, nil)
 	if err != nil {
-		return "", "", fmt.Errorf("python plugin: building releases request: %w", err)
+		return nil, fmt.Errorf("python plugin: building releases request: %w", err)
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", "", fmt.Errorf("python plugin: fetching releases: %w", err)
+		return nil, fmt.Errorf("python plugin: fetching releases: %w", err)
 	}
 	body, err := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 	if err != nil {
-		return "", "", fmt.Errorf("python plugin: reading releases response: %w", err)
+		return nil, fmt.Errorf("python plugin: reading releases response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("python plugin: releases API returned %s", resp.Status)
+		return nil, fmt.Errorf("python plugin: releases API returned %s", resp.Status)
 	}
 
 	var releases []struct {
@@ -167,39 +149,32 @@ func findLatest(prefix, triple string) (pyVersion, tag string, err error) {
 		} `json:"assets"`
 	}
 	if err := json.Unmarshal(body, &releases); err != nil {
-		return "", "", fmt.Errorf("python plugin: parsing releases JSON: %w", err)
+		return nil, fmt.Errorf("python plugin: parsing releases JSON: %w", err)
 	}
 
-	// Add a dot after prefix so "3" matches "3.12.x" but not "30.x.y".
-	assetPrefix := prefix + "."
-	var bestVer [3]int
-	bestVersionStr := ""
-	bestTag := ""
+	seen := map[string]bool{}
+	versions := make([]string, 0)
 
 	for _, release := range releases {
 		for _, asset := range release.Assets {
-			m := assetPattern.FindStringSubmatch(asset.Name)
-			if m == nil || !strings.HasPrefix(m[1], assetPrefix) || m[4] != triple {
+			m := assetPattern.FindStringSubmatch(strings.TrimSpace(asset.Name))
+			if m == nil || m[4] != triple {
 				continue
 			}
-			v := verutil.ParseTuple(m[1])
-			if bestVersionStr == "" || verutil.CmpTuple(v, bestVer) > 0 {
-				bestVer = v
-				bestVersionStr = m[1]
-				bestTag = m[3]
+			if _, err := semver.ParseVersion(m[1]); err != nil {
+				continue
 			}
-		}
-		// Releases are newest-first; stop after the first one that has any match.
-		// All relevant latest versions are in the most recent release.
-		if bestVersionStr != "" {
-			break
+			if !seen[m[1]] {
+				seen[m[1]] = true
+				versions = append(versions, m[1])
+			}
 		}
 	}
 
-	if bestVersionStr == "" {
-		return "", "", fmt.Errorf("python plugin: no release found for Python %s.* on %s in recent releases", prefix, triple)
+	if len(versions) == 0 {
+		return nil, fmt.Errorf("python plugin: no semantic versions found for %s in recent releases", triple)
 	}
-	return bestVersionStr, bestTag, nil
+	return versions, nil
 }
 
 // findReleaseTag fetches the project's Atom release feed (no auth required, not
@@ -250,4 +225,3 @@ func findReleaseTag(pyVersion, triple string) (string, error) {
 
 	return "", fmt.Errorf("python plugin: no release found for Python %s on %s in the latest %d releases; specify a build tag to install older versions (e.g. %s+20240814)", pyVersion, triple, len(tags), pyVersion)
 }
-

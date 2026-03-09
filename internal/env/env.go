@@ -17,9 +17,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
-
-	"github.com/trevorphillipscoding/nvy/internal/verutil"
 )
 
 // NvyDir returns the root nvy directory (~/.nvy).
@@ -127,38 +124,25 @@ func AtomicInstall(src, dst string) error {
 	return nil
 }
 
-// FindBestInstalled returns the highest installed version of tool whose
-// directory name matches the given prefix. Prefix may be partial (e.g. "3.13"
-// matches "3.13.0", "3.13.2", etc.). Returns "" if nothing matches.
-func FindBestInstalled(tool, prefix string) string {
+// InstalledVersions returns installed runtime directory names for a tool.
+// These are expected to be exact semantic versions (major.minor.patch).
+func InstalledVersions(tool string) ([]string, error) {
 	dir := filepath.Join(RuntimesDir(), tool)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return ""
+		return nil, err
 	}
 
-	wantPrefix := prefix + "."
-	var bestTuple [3]int
-	bestStr := ""
+	versions := make([]string, 0, len(entries))
 
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
 		}
-		v := e.Name()
-		// Match exact version or version starting with prefix+"."
-		if v != prefix && !strings.HasPrefix(v, wantPrefix) {
-			continue
-		}
-		t := verutil.ParseTuple(v)
-		if bestStr == "" || verutil.CmpTuple(t, bestTuple) > 0 {
-			bestTuple = t
-			bestStr = v
-		}
+		versions = append(versions, e.Name())
 	}
-	return bestStr
+	return versions, nil
 }
-
 
 func randomHex(n int) (string, error) {
 	b := make([]byte, n)

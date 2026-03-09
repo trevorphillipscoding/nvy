@@ -7,43 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/trevorphillipscoding/nvy/internal/verutil"
+	"github.com/trevorphillipscoding/nvy/internal/semver"
 )
-
-func TestParseVersion(t *testing.T) {
-	cases := []struct {
-		input     string
-		wantVer   string
-		wantTag   string
-		wantError bool
-	}{
-		{"3.12.5", "3.12.5", "", false},
-		{"3.12.5+20240814", "3.12.5", "20240814", false},
-		{"3.12", "3.12", "", false},
-		{"3", "3", "", false},
-		{"", "", "", true},
-		{"   ", "", "", true},
-	}
-	for _, c := range cases {
-		ver, tag, err := parseVersion(c.input)
-		if c.wantError {
-			if err == nil {
-				t.Errorf("parseVersion(%q): expected error, got nil", c.input)
-			}
-			continue
-		}
-		if err != nil {
-			t.Errorf("parseVersion(%q): unexpected error: %v", c.input, err)
-			continue
-		}
-		if ver != c.wantVer {
-			t.Errorf("parseVersion(%q) ver = %q; want %q", c.input, ver, c.wantVer)
-		}
-		if tag != c.wantTag {
-			t.Errorf("parseVersion(%q) tag = %q; want %q", c.input, tag, c.wantTag)
-		}
-	}
-}
 
 func TestParseVersionTuple(t *testing.T) {
 	cases := []struct {
@@ -58,9 +23,13 @@ func TestParseVersionTuple(t *testing.T) {
 		{"3", [3]int{3, 0, 0}},
 	}
 	for _, c := range cases {
-		got := verutil.ParseTuple(c.input)
+		v, err := semver.ParseReference(c.input)
+		if err != nil {
+			t.Fatalf("ParseReference(%q): %v", c.input, err)
+		}
+		got := [3]int{v.Major, v.Minor, v.Patch}
 		if got != c.want {
-			t.Errorf("parseVersionTuple(%q) = %v; want %v", c.input, got, c.want)
+			t.Errorf("ParseReference(%q) = %v; want %v", c.input, got, c.want)
 		}
 	}
 }
@@ -79,9 +48,12 @@ func TestCmpVersionTuple(t *testing.T) {
 		{[3]int{0, 0, 0}, [3]int{0, 0, 0}, 0},
 	}
 	for _, c := range cases {
-		got := verutil.CmpTuple(c.a, c.b)
+		got := semver.Compare(
+			semver.Version{Major: c.a[0], Minor: c.a[1], Patch: c.a[2]},
+			semver.Version{Major: c.b[0], Minor: c.b[1], Patch: c.b[2]},
+		)
 		if got != c.want {
-			t.Errorf("cmpVersionTuple(%v, %v) = %d; want %d", c.a, c.b, got, c.want)
+			t.Errorf("Compare(%v, %v) = %d; want %d", c.a, c.b, got, c.want)
 		}
 	}
 }
@@ -119,7 +91,7 @@ func TestNormalizeTriple(t *testing.T) {
 	}
 }
 
-func makeFindLatestServer(t *testing.T, triple string) *httptest.Server {
+func makeAvailableVersionsServer(t *testing.T, triple string) *httptest.Server {
 	t.Helper()
 	assets := []struct {
 		Name string `json:"name"`
@@ -140,65 +112,70 @@ func makeFindLatestServer(t *testing.T, triple string) *httptest.Server {
 	}))
 }
 
-func TestFindLatest(t *testing.T) {
+func TestListAvailableVersions(t *testing.T) {
 	triple := "x86_64-unknown-linux-gnu"
-	srv := makeFindLatestServer(t, triple)
+	srv := makeAvailableVersionsServer(t, triple)
 	defer srv.Close()
 
 	orig := releasesAPI
 	releasesAPI = srv.URL
 	defer func() { releasesAPI = orig }()
 
-	pyVersion, tag, err := findLatest("3", triple)
+	versions, err := listAvailableVersions(triple)
 	if err != nil {
-		t.Fatalf("findLatest: %v", err)
+		t.Fatalf("listAvailableVersions: %v", err)
 	}
-	// Should pick the highest version: 3.13.1 > 3.12.8 > 3.12.5
+	pyVersion, err := semver.Resolve("3", versions)
+	if err != nil {
+		t.Fatalf("Resolve(3): %v", err)
+	}
 	if pyVersion != "3.13.1" {
 		t.Errorf("pyVersion = %q; want 3.13.1", pyVersion)
 	}
-	if tag != "20240814" {
-		t.Errorf("tag = %q; want 20240814", tag)
-	}
 }
 
-func TestFindLatest_Minor(t *testing.T) {
+func TestListAvailableVersions_MinorResolution(t *testing.T) {
 	triple := "x86_64-unknown-linux-gnu"
-	srv := makeFindLatestServer(t, triple)
+	srv := makeAvailableVersionsServer(t, triple)
 	defer srv.Close()
 
 	orig := releasesAPI
 	releasesAPI = srv.URL
 	defer func() { releasesAPI = orig }()
 
-	pyVersion, tag, err := findLatest("3.12", triple)
+	versions, err := listAvailableVersions(triple)
 	if err != nil {
-		t.Fatalf("findLatest 3.12: %v", err)
+		t.Fatalf("listAvailableVersions: %v", err)
+	}
+	pyVersion, err := semver.Resolve("3.12", versions)
+	if err != nil {
+		t.Fatalf("Resolve 3.12: %v", err)
 	}
 	if pyVersion != "3.12.8" {
 		t.Errorf("pyVersion = %q; want 3.12.8", pyVersion)
 	}
-	if tag != "20240814" {
-		t.Errorf("tag = %q; want 20240814", tag)
-	}
 }
 
-func TestFindLatest_NotFound(t *testing.T) {
+func TestListAvailableVersions_NotFound(t *testing.T) {
 	triple := "x86_64-unknown-linux-gnu"
-	srv := makeFindLatestServer(t, triple)
+	srv := makeAvailableVersionsServer(t, triple)
 	defer srv.Close()
 
 	orig := releasesAPI
 	releasesAPI = srv.URL
 	defer func() { releasesAPI = orig }()
 
-	_, _, err := findLatest("4", triple)
+	versions, err := listAvailableVersions(triple)
+	if err != nil {
+		t.Fatalf("listAvailableVersions: %v", err)
+	}
+	_, err = semver.Resolve("4", versions)
 	if err == nil {
 		t.Error("expected error for version 4.*, got nil")
 	}
 }
 
-func TestFindLatest_ServerError(t *testing.T) {
+func TestListAvailableVersions_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
@@ -208,13 +185,13 @@ func TestFindLatest_ServerError(t *testing.T) {
 	releasesAPI = srv.URL
 	defer func() { releasesAPI = orig }()
 
-	_, _, err := findLatest("3", "x86_64-unknown-linux-gnu")
+	_, err := listAvailableVersions("x86_64-unknown-linux-gnu")
 	if err == nil {
 		t.Error("expected error for server 500, got nil")
 	}
 }
 
-func TestFindLatest_BadJSON(t *testing.T) {
+func TestListAvailableVersions_BadJSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("not json"))
 	}))
@@ -224,7 +201,7 @@ func TestFindLatest_BadJSON(t *testing.T) {
 	releasesAPI = srv.URL
 	defer func() { releasesAPI = orig }()
 
-	_, _, err := findLatest("3", "x86_64-unknown-linux-gnu")
+	_, err := listAvailableVersions("x86_64-unknown-linux-gnu")
 	if err == nil {
 		t.Error("expected error for bad JSON, got nil")
 	}
@@ -262,7 +239,7 @@ func TestFindReleaseTag_NoTags(t *testing.T) {
 	}
 }
 
-func TestLatestVersion(t *testing.T) {
+func TestAvailableVersions(t *testing.T) {
 	triple := "x86_64-unknown-linux-gnu"
 	assets := []struct {
 		Name string `json:"name"`
@@ -284,11 +261,15 @@ func TestLatestVersion(t *testing.T) {
 	defer func() { releasesAPI = orig }()
 
 	p := New()
-	ver, err := p.LatestVersion("3.12", "linux", "amd64")
+	versions, err := p.AvailableVersions("linux", "amd64")
 	if err != nil {
-		t.Fatalf("LatestVersion: %v", err)
+		t.Fatalf("AvailableVersions: %v", err)
+	}
+	ver, err := semver.Resolve("3.12", versions)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
 	}
 	if ver != "3.12.8" {
-		t.Errorf("LatestVersion = %q; want 3.12.8", ver)
+		t.Errorf("resolved version = %q; want 3.12.8", ver)
 	}
 }

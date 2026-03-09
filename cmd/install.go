@@ -11,7 +11,6 @@ import (
 	"github.com/trevorphillipscoding/nvy/internal/archive"
 	"github.com/trevorphillipscoding/nvy/internal/env"
 	"github.com/trevorphillipscoding/nvy/internal/fetch"
-	"github.com/trevorphillipscoding/nvy/internal/verutil"
 	"github.com/trevorphillipscoding/nvy/plugins"
 )
 
@@ -44,16 +43,10 @@ func runInstall(_ *cobra.Command, args []string) error {
 	}
 	tool = p.Name() // normalise alias → canonical name (e.g. "golang" → "go")
 
-	// Resolve partial versions (e.g. "22" → "22.13.1", "3.13" → "3.13.2") via
-	// the plugin's LatestVersion before calling Resolve with the full version.
-	ver := rawVer
-	if verutil.IsPartial(rawVer) {
-		ver, err = p.LatestVersion(rawVer, env.OS(), env.Arch())
-		if err != nil {
-			return fmt.Errorf("resolving latest %s %s: %w", tool, rawVer, err)
-		}
+	ver, err := resolveInstallVersion(p, rawVer)
+	if err != nil {
+		return fmt.Errorf("resolving version for %s %s: %w", tool, rawVer, err)
 	}
-	ver = verutil.Normalize(ver)
 
 	spec, err := p.Resolve(ver, env.OS(), env.Arch())
 	if err != nil {

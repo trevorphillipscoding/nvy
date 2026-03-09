@@ -43,11 +43,12 @@ type Plugin interface {
 	// Aliases are case-sensitive and must not conflict with other plugin names.
 	Aliases() []string
 
-	// LatestVersion returns the latest available full version string matching
-	// prefix (e.g. "22" → "22.13.1", "3.13" → "3.13.2"). Called by the install
-	// command when the user supplies a partial version. Plugins may use goos/goarch
-	// to filter platform-specific releases.
-	LatestVersion(prefix, goos, goarch string) (string, error)
+	// AvailableVersions returns all available exact versions (major.minor.patch)
+	// for this runtime on the given platform.
+	//
+	// Version interpretation (exact vs partial, latest matching version, sorting)
+	// is handled centrally by internal/semver. Plugins only provide candidates.
+	AvailableVersions(goos, goarch string) ([]string, error)
 
 	// Resolve returns a DownloadSpec for the given full version on the given platform.
 	// version is always a complete version string (e.g. "22.13.1", not "22").

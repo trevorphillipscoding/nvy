@@ -12,7 +12,7 @@ import (
 //
 // The version is returned trimmed of whitespace and trailing dots
 // (e.g. "1.26." → "1.26"). Each plugin normalizes or resolves
-// versions in its own Resolve() implementation.
+// versions through the shared semantic resolver.
 func parseToolVersion(args []string) (tool, ver string, err error) {
 	clean := func(v string) string {
 		return strings.TrimRight(strings.TrimSpace(v), ".")

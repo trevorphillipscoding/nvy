@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trevorphillipscoding/nvy/internal/verutil"
+	"github.com/trevorphillipscoding/nvy/internal/semver"
 	"github.com/trevorphillipscoding/nvy/plugins"
 )
 
@@ -33,10 +33,9 @@ func (g *goPlugin) Name() string { return "go" }
 
 func (g *goPlugin) Aliases() []string { return []string{"golang"} }
 
-// LatestVersion returns the latest stable Go release whose version starts with prefix
-// (e.g. "1" or "1.26"). goos/goarch are unused — Go releases are platform-agnostic.
-func (g *goPlugin) LatestVersion(prefix, _, _ string) (string, error) {
-	return findLatestGoVersion(prefix)
+// AvailableVersions returns stable Go versions as exact semantic versions.
+func (g *goPlugin) AvailableVersions(_, _ string) ([]string, error) {
+	return fetchStableGoVersions()
 }
 
 // Resolve builds the download spec for a Go release tarball.
@@ -57,7 +56,11 @@ func (g *goPlugin) Resolve(ver, goos, goarch string) (*plugins.DownloadSpec, err
 		return nil, err
 	}
 
-	ver = verutil.Normalize(ver)
+	v, err := semver.ParseVersion(ver)
+	if err != nil {
+		return nil, fmt.Errorf("go plugin: %w", err)
+	}
+	ver = v.String()
 	filename := fmt.Sprintf("go%s.%s-%s.tar.gz", ver, os, arch)
 	url := fmt.Sprintf("%s/%s", downloadBase, filename)
 
@@ -69,22 +72,19 @@ func (g *goPlugin) Resolve(ver, goos, goarch string) (*plugins.DownloadSpec, err
 	}, nil
 }
 
-// findLatestGoVersion returns the latest stable Go release whose version
-// starts with prefix (e.g. "1" or "1.26"). The go.dev/dl API returns releases
-// newest-first, so the first match is the latest.
-func findLatestGoVersion(prefix string) (string, error) {
+func fetchStableGoVersions() ([]string, error) {
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Get(releasesAPI)
 	if err != nil {
-		return "", fmt.Errorf("go plugin: fetching releases: %w", err)
+		return nil, fmt.Errorf("go plugin: fetching releases: %w", err)
 	}
 	body, err := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 	if err != nil {
-		return "", fmt.Errorf("go plugin: reading releases response: %w", err)
+		return nil, fmt.Errorf("go plugin: reading releases response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("go plugin: releases API returned %s", resp.Status)
+		return nil, fmt.Errorf("go plugin: releases API returned %s", resp.Status)
 	}
 
 	var releases []struct {
@@ -92,18 +92,23 @@ func findLatestGoVersion(prefix string) (string, error) {
 		Stable  bool   `json:"stable"`
 	}
 	if err := json.Unmarshal(body, &releases); err != nil {
-		return "", fmt.Errorf("go plugin: parsing releases JSON: %w", err)
+		return nil, fmt.Errorf("go plugin: parsing releases JSON: %w", err)
 	}
 
-	// Versions in the API are "go1.24.1"; add a dot after prefix to avoid
-	// "go1.2" matching "go1.20.x".
-	wantPrefix := "go" + prefix + "."
+	versions := make([]string, 0, len(releases))
 	for _, r := range releases {
-		if r.Stable && strings.HasPrefix(r.Version, wantPrefix) {
-			return strings.TrimPrefix(r.Version, "go"), nil
+		if !r.Stable {
+			continue
+		}
+		v := strings.TrimPrefix(r.Version, "go")
+		if _, parseErr := semver.ParseVersion(v); parseErr == nil {
+			versions = append(versions, v)
 		}
 	}
-	return "", fmt.Errorf("go plugin: no stable release found for Go %s.*", prefix)
+	if len(versions) == 0 {
+		return nil, fmt.Errorf("go plugin: no stable semantic versions found")
+	}
+	return versions, nil
 }
 
 func normalizeOS(goos string) (string, error) {
