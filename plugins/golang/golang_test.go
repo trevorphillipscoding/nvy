@@ -77,7 +77,7 @@ func TestFetchStableGoVersions(t *testing.T) {
 		{Version: "go1.24.0", Stable: true},
 		{Version: "go1.23.5", Stable: true},
 		{Version: "go1.22.12", Stable: true},
-		{Version: "go1.22.0", Stable: true},  // archived version
+		{Version: "go1.22.0", Stable: true},   // archived version
 		{Version: "go1.21.13", Stable: true},  // archived version
 		{Version: "go1.22rc1", Stable: false}, // pre-release, must be excluded
 	}
