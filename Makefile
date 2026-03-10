@@ -35,6 +35,10 @@ test:
 lint:
 	golangci-lint run ./...
 
+# Format: run gofmt
+format:
+	gofmt -s -w .
+
 ## cover: run tests and show coverage report
 cover:
 	go test -coverprofile=coverage.out -coverpkg=$(COVER_PKGS) ./...
