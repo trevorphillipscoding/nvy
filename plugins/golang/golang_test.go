@@ -77,7 +77,9 @@ func TestFetchStableGoVersions(t *testing.T) {
 		{Version: "go1.24.0", Stable: true},
 		{Version: "go1.23.5", Stable: true},
 		{Version: "go1.22.12", Stable: true},
-		{Version: "go1.22rc1", Stable: false},
+		{Version: "go1.22.0", Stable: true},   // archived version
+		{Version: "go1.21.13", Stable: true},  // archived version
+		{Version: "go1.22rc1", Stable: false}, // pre-release, must be excluded
 	}
 	body, _ := json.Marshal(releases)
 
@@ -96,12 +98,31 @@ func TestFetchStableGoVersions(t *testing.T) {
 		t.Fatalf("fetchStableGoVersions: %v", err)
 	}
 
+	// Latest version within 1.24 branch
 	resolved, err := semver.Resolve("1.24", versions)
 	if err != nil {
 		t.Fatalf("Resolve 1.24: %v", err)
 	}
 	if resolved != "1.24.1" {
 		t.Errorf("Resolve(1.24) = %q; want 1.24.1", resolved)
+	}
+
+	// Archived version must also be resolvable by exact version
+	resolved, err = semver.Resolve("1.22.0", versions)
+	if err != nil {
+		t.Fatalf("Resolve 1.22.0: %v", err)
+	}
+	if resolved != "1.22.0" {
+		t.Errorf("Resolve(1.22.0) = %q; want 1.22.0", resolved)
+	}
+
+	// Archived minor branch
+	resolved, err = semver.Resolve("1.21", versions)
+	if err != nil {
+		t.Fatalf("Resolve 1.21: %v", err)
+	}
+	if resolved != "1.21.13" {
+		t.Errorf("Resolve(1.21) = %q; want 1.21.13", resolved)
 	}
 }
 
