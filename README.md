@@ -184,16 +184,6 @@ Version resolution order: **local** `.go-version` file (walking up from cwd) →
 
 ### Plugin architecture
 
-Every runtime is a self-contained plugin implementing a three-method interface:
-
-```go
-type Plugin interface {
-    Name() string
-    Aliases() []string
-    Resolve(version, goos, goarch string) (*DownloadSpec, error)
-}
-```
-
 To add a new runtime (e.g., Ruby, Rust, Deno):
 
 1. Create `plugins/<lang>/<lang>.go` implementing the interface
